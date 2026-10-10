@@ -6,6 +6,9 @@ var out_dir := "res://tests_out"
 
 func run(name: String) -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(out_dir))
+	var gi := FileAccess.open(out_dir + "/.gdignore", FileAccess.WRITE)
+	if gi:
+		gi.store_string("")
 	var parts := name.split(":")
 	call_deferred("_run_" + parts[0], parts.slice(1))
 
@@ -341,6 +344,9 @@ func _run_town(a: Array) -> void:
 	_log("Requests: %d" % qs.size())
 	for r in qs:
 		_log("  - %s :: %s" % [QuestLogic.title(r), r.get("text", "")])
+	for p in t.residents.slice(0, 6):
+		var ctx := TownUI.context_for(p, "Tester")
+		_log("  [%s] %s" % [p["first"], " / ".join(PackedStringArray(Dialogue.talk(p, ctx)))])
 	var lp = Game.local_player
 	var over = Zones.get_zone("over")
 	Game.tod = 300.0  # 11am
@@ -395,5 +401,77 @@ func _run_town(a: Array) -> void:
 	Game.tod = 900.0
 	await _frames(30)
 	await _shot("town_night")
+	_log("DONE fails=%d" % _fails)
+	get_tree().quit()
+
+func _run_cave(a: Array) -> void:
+	_start_world(12345)
+	await _frames(5)
+	var floors: Array = []
+	for x in a:
+		floors.append(int(x))
+	if floors.is_empty():
+		floors = [1]
+	var lp = Game.local_player
+	for f in floors:
+		var t0 := Time.get_ticks_msec()
+		Zones.travel_local("cave_%d" % f, null, "up")
+		await _frames(3)
+		var z: CaveFloor = Zones.get_zone("cave_%d" % f)
+		var ne := 0
+		for e in Zones.enemies.values():
+			if e.zone_id == z.zone_id:
+				ne += 1
+		_log("floor %d (%s): built in %d ms, %dx%d, rooms=%d, nodes=%d, enemies=%d, bridges=%d, hidden=%s" % [f, z.gen.biome["name"], Time.get_ticks_msec() - t0, z.gen.W, z.gen.H, z.gen.rooms.size(), z.objs.size(), ne, z.gen.bridges.size(), str(z.gen.hidden_wall)])
+		_check(z.gen.walkable(z.gen.exit_cell), "exit reachable cell on floor %d" % f)
+		await _frames(20)
+		await _shot("cave_%d" % f)
+		# zoomed-out overview of the floor
+		Game.main.cam.target_dist = 26.0
+		await _frames(20)
+		await _shot("cave_%d_far" % f)
+		Game.main.cam.target_dist = 14.0
+	# combat on the last floor
+	var z2: CaveFloor = Zones.get_zone(lp.zone_id)
+	var target = null
+	for e in Zones.enemies.values():
+		if e.zone_id == z2.zone_id and not e.dead:
+			target = e
+			break
+	if target:
+		var eid: int = target.eid
+		var et: String = target.etype
+		lp.global_position = target.global_position + Vector3(1.5, 0, 0)
+		for i in 40:
+			if not Zones.enemies.has(eid):
+				break
+			Zones.hit_enemy(eid, 30.0, Vector3(1, 0, 0), false, {})
+			await _frames(2)
+		_check(not Zones.enemies.has(eid), "killed a %s" % et)
+		await _frames(30)
+		var pk: int = z2.pickups_root.get_child_count()
+		_log("pickups on floor after kill: %d" % pk)
+	# let creatures attack a standing player
+	var hp0: float = lp.hp
+	for e in Zones.enemies.values():
+		if e.zone_id == z2.zone_id and not e.dead:
+			lp.global_position = e.global_position + Vector3(1.2, 0, 0.5)
+			break
+	for i in 240:
+		await get_tree().physics_frame
+	_log("player hp %d -> %d (downed=%s)" % [int(hp0), int(lp.hp), str(lp.downed)])
+	_check(lp.hp < hp0 or lp.downed, "creatures attacked the player")
+	await _shot("cave_combat")
+	# mine some ore
+	var ore = null
+	for o in z2.objs.values():
+		if o is ResourceNode and o.sub.begins_with("ore_"):
+			ore = o
+			break
+	if ore:
+		var before := Game.inv.counts()
+		ore.tool_hit(lp, "pick", 4, 100.0)
+		await _frames(4)
+		_check(Game.inv.counts() != before, "mined %s" % ore.sub)
 	_log("DONE fails=%d" % _fails)
 	get_tree().quit()

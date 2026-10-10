@@ -263,10 +263,10 @@ func _cave(focus: Vector3) -> void:
 	env.background_color = _cave_fog
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = _cave_tint
-	env.ambient_light_energy = _cave_amb
+	env.ambient_light_energy = _cave_amb * 2.4
 	env.fog_enabled = true
 	env.fog_light_color = _cave_fog
-	env.fog_density = 0.028
+	env.fog_density = 0.014
 	env.fog_sky_affect = 1.0
 	env.adjustment_saturation = 1.1
 	env.glow_hdr_threshold = 0.75

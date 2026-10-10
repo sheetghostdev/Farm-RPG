@@ -134,9 +134,7 @@ static func _ladder(mb: MeshBuilder) -> void:
 		mb.box(Vector3(s * 0.32, 1.6, 0), Vector3(0.08, 3.6, 0.08), Color("8a6a42"))
 	for i in 9:
 		mb.box(Vector3(0, 0.2 + i * 0.38, 0), Vector3(0.64, 0.06, 0.08), Color("a07a4a"))
-	mb.surface("glow_steady")
-	mb.disc(Vector3(0, 3.42, 0), 0.6, 8, Color(0.55, 0.6, 0.5))
-	mb.surface("vc")
+
 
 static func _hole(mb: MeshBuilder) -> void:
 	for i in 10:

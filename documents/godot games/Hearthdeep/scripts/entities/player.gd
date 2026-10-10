@@ -77,6 +77,7 @@ func setup(info: Dictionary) -> void:
 	lantern.light_color = Color("ffd9a0")
 	lantern.position = Vector3(0.3, 1.9, 0.3)
 	lantern.omni_range = 8.0
+	lantern.omni_attenuation = 0.8
 	lantern.light_energy = 0.0
 	lantern.shadow_enabled = false
 	add_child(lantern)
@@ -175,8 +176,8 @@ func _update_lantern(delta: float) -> void:
 	var want := 0.0
 	var rng := 8.0
 	if z and z.underground():
-		want = 1.5
-		rng = 8.5
+		want = 2.4
+		rng = 11.5
 	elif z and z.kind == "over" and Game.daylight() < 0.35:
 		want = 0.7 * (1.0 - Game.daylight() / 0.35)
 		rng = 7.0

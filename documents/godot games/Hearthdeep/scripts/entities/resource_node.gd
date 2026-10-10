@@ -45,6 +45,7 @@ const RES := {
 	"chest_hidden": {"tool": "hand", "hp": 1.0, "loot": "hidden", "respawn": -1, "block": 0.45, "xp": 25, "skill": "mining", "vis": 70.0, "name": "Forgotten Chest", "open": true},
 	"minecart": {"tool": "hand", "hp": 1.0, "loot": "minecart", "respawn": 10, "block": 0.8, "xp": 5, "skill": "mining", "vis": 80.0, "name": "Abandoned Minecart", "open": true},
 	"cave_plant": {"tool": "hand", "hp": 1.0, "drops": [], "respawn": 3, "block": 0.0, "skill": "foraging", "xp": 5, "vis": 60.0},
+	"quest_item": {"tool": "hand", "hp": 1.0, "drops": [], "respawn": -1, "block": 0.0, "skill": "mining", "xp": 5, "vis": 90.0, "name": "Something Lost"},
 	"bones": {"tool": "hand", "hp": 1.0, "drops": [["bone", 1, 2]], "respawn": -1, "block": 0.0, "skill": "foraging", "xp": 2, "vis": 60.0, "name": "Old Remains", "note": true},
 }
 
@@ -82,6 +83,17 @@ func setup(id: String, k: String, pos: Vector3, rot: float, variant: int, scl: f
 		radius = 1.8
 	if k == "berry_bush":
 		_update_berries()
+	if k == "quest_item":
+		var mk := MeshInstance3D.new()
+		mk.mesh = CaveProps.get_mesh("quest_marker", 0)
+		mk.position = Vector3(0, 1.4, 0)
+		add_child(mk)
+		var ql := OmniLight3D.new()
+		ql.light_color = Color("ffd36b")
+		ql.light_energy = 1.0
+		ql.omni_range = 4.0
+		ql.position = Vector3(0, 1.0, 0)
+		add_child(ql)
 
 func _mesh_for(k: String, v: int) -> Mesh:
 	match k:
@@ -139,6 +151,8 @@ func _mesh_for(k: String, v: int) -> Mesh:
 			return Props.get_mesh("cart", 1)
 		"bones":
 			return CaveProps.get_mesh("bones", 0)
+		"quest_item":
+			return ItemModels.drop_mesh(data.get("item", "lost_pick"), 1.6)
 	return Props.get_mesh("rock", 0)
 
 func display() -> String:
@@ -153,6 +167,8 @@ func prompt(_player) -> String:
 			return "Pick berries" if berries_ready else ""
 		"forage", "cave_plant":
 			return "Pick up %s" % display()
+		"quest_item":
+			return "Pick up the %s" % Items.def(data.get("item", ""))["name"]
 		"weed":
 			return "Pull weeds"
 		"twig":
@@ -199,6 +215,10 @@ func tool_hit(player, t: String, tier: int, power: float) -> void:
 			bonus = 2
 		Net.request("harvest_node", {"z": zone.zone_id, "id": oid, "mult": bonus})
 		Game.add_xp(r.get("skill", "foraging"), float(r.get("xp", 1)))
+		if r.get("ore", false):
+			Game.add_stat("ore_mined")
+		elif r.get("fall", false):
+			Game.add_stat("trees_felled")
 
 func _chips(r: Dictionary) -> void:
 	var col := Color("8f8d88")
@@ -229,6 +249,9 @@ func roll_drops(rng: RandomNumberGenerator, mult: int) -> Array:
 		return out
 	if sub == "berry_bush":
 		out.append(Items.make(data.get("berry", "bramble_berry"), rng.randi_range(2, 4)))
+		return out
+	if sub == "quest_item":
+		out.append(Items.make(data.get("item", "lost_pick")))
 		return out
 	if r.has("loot"):
 		return Loot.roll(r["loot"], depth, rng)

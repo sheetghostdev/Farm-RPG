@@ -4,7 +4,7 @@ extends RefCounted
 
 static func _auto_free(n: Node, t: float) -> void:
 	var tm := n.get_tree().create_timer(t)
-	tm.timeout.connect(func(): if is_instance_valid(n): n.queue_free())
+	tm.timeout.connect(n.queue_free)
 
 static func burst(parent: Node, pos: Vector3, col: Color, count: int = 8, speed: float = 3.0, size: float = 0.09, gravity: float = -14.0) -> void:
 	if parent == null or not parent.is_inside_tree():

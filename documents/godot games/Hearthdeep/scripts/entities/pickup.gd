@@ -67,11 +67,13 @@ func _physics_process(delta: float) -> void:
 		if dist < 0.9:
 			_requested = true
 			Net.request("take_pickup", {"pid": pid})
-			var tm := get_tree().create_timer(2.0)
-			tm.timeout.connect(func(): _requested = false)
+			get_tree().create_timer(2.0).timeout.connect(_reset_request)
 
 func collect_anim() -> void:
 	set_physics_process(false)
 	var tw := create_tween()
 	tw.tween_property(self, "scale", Vector3.ONE * 0.05, 0.12)
 	tw.tween_callback(queue_free)
+
+func _reset_request() -> void:
+	_requested = false
