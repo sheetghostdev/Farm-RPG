@@ -55,10 +55,11 @@ func start_new_world(world_name: String, seed_value: int, opts: Dictionary, host
 	Game.tod = float(Game.world["tod"])
 	Zones.overworld_gen()
 	Net.server.init_new_world()
-	TownLogic.init_town(Net.server)
-	QuestLogic.new_day(Net.server, 1)
+	Net.server.town_logic.init_town()
 	save_path = _path_for(world_name)
 	_begin_host_world()
+	Net.server.quest_logic.new_day(1)
+	Net.server.quest_logic._publish()
 	return ""
 
 func load_world(path: String, host: bool, port: int) -> String:

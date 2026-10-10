@@ -198,6 +198,9 @@ func open_kettle(o) -> void:
 func open_cook(o, campfire: bool) -> void:
 	show_win(CookWindow.new(o, campfire))
 
+func open_dialogue(n) -> void:
+	TownUI.open_dialogue(self, n)
+
 func open_map() -> void:
 	show_win(MapWindow.new())
 

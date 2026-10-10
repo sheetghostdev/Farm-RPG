@@ -132,8 +132,9 @@ func _choose_sites() -> void:
 	farm_rect = Rect2(fc - Vector2(28, 22), Vector2(56, 44))
 	var side := -1.0 if rng.randf() < 0.5 else 1.0
 	town_center = fc + Vector2(side * rng.randf_range(100, 118), rng.randf_range(-30, 10))
-	town_center.x = clamp(town_center.x, 72.0, S - 72.0)
-	town_rect = Rect2(town_center - Vector2(34, 30), Vector2(68, 60))
+	town_center.x = clamp(town_center.x, 80.0, S - 80.0)
+	town_center.y = clamp(town_center.y, 80.0, S - 70.0)
+	town_rect = Rect2(town_center - Vector2(42, 42), Vector2(84, 84))
 	var cx := clamp(fc.x + rng.randf_range(-60, 60) - side * 30.0, 70.0, S - 70.0)
 	cave_pos = Vector2(cx, rng.randf_range(58, 78))
 
@@ -446,6 +447,14 @@ func _make_roads() -> void:
 					if water_idx[z * S + x] == 0 and d < 2.4:
 						var cur := _hv(x, z)
 						_set_hv(x, z, lerp(cur, target, 0.55))
+	# the town plaza and its ring street
+	for z in range(int(town_center.y) - 17, int(town_center.y) + 18):
+		for x in range(int(town_center.x) - 17, int(town_center.x) + 18):
+			if x < 0 or z < 0 or x >= S or z >= S:
+				continue
+			var dd := Vector2(x, z).distance_to(town_center)
+			if dd < 15.5:
+				road[z * S + x] = max(road[z * S + x], 255 if dd < 13.5 else int((15.5 - dd) * 127.0))
 	# bridges where roads meet the river
 	for line in roads:
 		var in_water := false
@@ -621,6 +630,8 @@ func color_at(x: int, z: int) -> Color:
 		B.TOWN:
 			c = Color("64a044")
 	var rd := road[i] / 255.0
+	if b == B.TOWN and Vector2(cx, cz).distance_to(town_center) < 9.6:
+		return Color(0.62, 0.6, 0.55, 0.0)
 	if rd > 0.0:
 		c = c.lerp(Color("9a7a50"), clamp(rd * 1.4, 0.0, 1.0))
 		grassy *= 1.0 - clamp(rd * 1.4, 0.0, 1.0)

@@ -583,6 +583,8 @@ func _build_farmhouse() -> void:
 	farmhouse_mi = Meshes.inst(Props.get_mesh("farmhouse", lvl), struct_root, hp)
 	var w := 7.0 + lvl * 2.5
 	var d := 5.5 + lvl * 1.5
+	var fh := 2.9 + (2.4 if lvl >= 2 else 0.0) + w * 0.42
+	Zones.register_occluder(farmhouse_mi, "over", hp + Vector3(-2.0 if lvl >= 2 else 0.0, fh / 2.0, 0), Vector3(w / 2.0 + (2.5 if lvl >= 2 else 0.6), fh / 2.0 + 0.3, d / 2.0 + 0.8), 0.0)
 	farmhouse_body = StaticBody3D.new()
 	struct_root.add_child(farmhouse_body)
 	farmhouse_body.position = hp
@@ -608,6 +610,8 @@ func _spawn_placed(oid: String, o: Dictionary) -> void:
 	objects_root.add_child(po)
 	po.setup(oid, o)
 	register(po)
+	if po.obj_type in ["coop", "shed"] and po.mesh_inst:
+		Zones.register_occluder(po.mesh_inst, zone_id, po.global_position + Vector3(0, 1.8, 0), Vector3(2.4, 2.0, 2.2), po.rotation.y)
 
 # ------------------------------------------------------------------ cave entrance
 

@@ -326,3 +326,74 @@ func _run_uishot(_a: Array) -> void:
 	await _frames(10)
 	await _shot("ui_craft")
 	get_tree().quit()
+
+func _run_town(a: Array) -> void:
+	_start_world(int(a[0]) if a.size() > 0 else 12345)
+	await _frames(10)
+	var t: TownGen = Zones.town
+	_log("Town: %s, %d buildings, %d residents" % [t.name, t.buildings.size(), t.residents.size()])
+	for p in t.residents:
+		var fam := []
+		for k in p["family"]:
+			fam.append(k)
+		_log("  %s (%s, %s) %s | %s | loves %s | family %s" % [p["name"], p["age"], TownGen.job_title(p), "/".join(PackedStringArray(p["traits"])), "/".join(PackedStringArray(p["interests"])), p["loves"], fam])
+	var qs: Array = QuestLogic.quests()["active"]
+	_log("Requests: %d" % qs.size())
+	for r in qs:
+		_log("  - %s :: %s" % [QuestLogic.title(r), r.get("text", "")])
+	var lp = Game.local_player
+	var over = Zones.get_zone("over")
+	Game.tod = 300.0  # 11am
+	await _frames(5)
+	var tb = over.town
+	var keeper: Dictionary = t.keeper_of("general")
+	var n = tb.npc(keeper["id"])
+	_check(n != null, "general store keeper exists")
+	_check(n.at_work(), "keeper at the counter at 11am (act=%s)" % n.activity)
+	lp.global_position = n.global_position + Vector3(0, 0, 1.5)
+	n.interact(lp)
+	await _frames(5)
+	_check(Game.main.ui.current != null and Game.main.ui.current.kind == "dialogue", "dialogue opened")
+	await _shot("town_dialogue")
+	Game.main.ui.close()
+	var m0 := Game.money()
+	Net.request("shop_buy", {"shop": "general", "id": "turnip_seeds", "n": 2})
+	await _frames(3)
+	_check(Game.money() < m0, "bought seeds (%d -> %d)" % [m0, Game.money()])
+	Game.inv.add(Items.make("stone", 40))
+	Net.request("shop_sell", {"item": Items.make("stone", 40), "shop": "general"})
+	await _frames(3)
+	Net.request("gift", {"npc": keeper["id"], "item": keeper["loves"][0]})
+	await _frames(3)
+	_check(TownLogic.points(keeper["id"], Game.profile["name"]) >= 80, "loved gift raised friendship (%d)" % TownLogic.points(keeper["id"], Game.profile["name"]))
+	# fund the bridge project
+	Game.world["money"] = 5000
+	Net.request("project_give", {"pid": "bridge", "item": "wood", "n": 60})
+	Net.request("project_give", {"pid": "bridge", "item": "stone", "n": 40})
+	Net.request("project_give", {"pid": "bridge", "coins": 500})
+	await _frames(3)
+	_check(Game.world["town"]["projects"]["bridge"]["state"] == "funded", "bridge funded")
+	Net.server.start_new_day()
+	await _frames(5)
+	_check(Game.world["flags"].get("bridge_fixed", false), "bridge fixed next day")
+	_check(int(Game.world["town"]["level"]) == 1, "town level 1")
+	Game.main.ui.show_win(BoardWindow.new("requests"))
+	await _frames(5)
+	await _shot("town_board")
+	Game.main.ui.close()
+	Game.main.ui.show_win(BoardWindow.new("projects"))
+	await _frames(5)
+	await _shot("town_projects")
+	Game.main.ui.close()
+	# overview shot
+	Game.tod = 360.0
+	lp.global_position = t.center + Vector3(0, 0, 12)
+	Game.main.cam.target_dist = 26.0
+	Game.main.cam.snap()
+	await _frames(30)
+	await _shot("town_overview")
+	Game.tod = 900.0
+	await _frames(30)
+	await _shot("town_night")
+	_log("DONE fails=%d" % _fails)
+	get_tree().quit()

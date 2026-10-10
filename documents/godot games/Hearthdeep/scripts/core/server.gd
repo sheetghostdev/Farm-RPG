@@ -5,14 +5,22 @@ extends RefCounted
 ## changes and grants items.
 
 var rng := RandomNumberGenerator.new()
+var town_logic: TownLogic
+var quest_logic: QuestLogic
 
 func _init() -> void:
 	rng.randomize()
+	town_logic = TownLogic.new(self)
+	quest_logic = QuestLogic.new(self)
 
 func handle(peer: int, action: String, args: Dictionary) -> void:
 	var m := "_a_" + action
 	if has_method(m):
 		call(m, peer, args)
+	elif town_logic.has_method("a_" + action):
+		town_logic.call("a_" + action, peer, args)
+	elif quest_logic.has_method("a_" + action):
+		quest_logic.call("a_" + action, peer, args)
 	else:
 		push_warning("Unknown action " + action)
 
@@ -111,6 +119,8 @@ func _a_discover_place(peer: int, a: Dictionary) -> void:
 	_toast("%s discovered %s" % [pname(peer), a.get("name", "somewhere new")], Color("ffe08a"))
 	Net.tell(peer, "sfx", {"s": "discovery"})
 	chronicle("%s discovered %s." % [pname(peer), a.get("name", "")], "place")
+	quest_logic.on_discover(id)
+	Net.tell(peer, "stat", {"k": "places_found", "n": 1})
 
 func _a_explore(_peer: int, a: Dictionary) -> void:
 	var cells: PackedInt32Array = a["cells"]
@@ -619,10 +629,7 @@ func _a_party_buff(peer: int, a: Dictionary) -> void:
 			Net.tell(id, "buff", {"type": a["type"], "mag": a["mag"], "dur": a["dur"], "heal": a.get("heal", 0.0), "from": pname(peer)})
 
 func on_enemy_killed(peer: int, etype: String, zid: String) -> void:
-	var z := Zones.get_zone(zid)
-	if Game.has_method("quest_progress_kill"):
-		pass
-	QuestLogic.on_kill(self, peer, etype, zid)
+	quest_logic.on_kill(peer, etype, zid)
 
 # ------------------------------------------------------------------ the night
 
@@ -702,8 +709,8 @@ func start_new_day() -> void:
 				d["feed"] = int(d.get("feed", 0)) - fed
 				d["eggs"] = min(12, int(d.get("eggs", 0)) + fed)
 	# 4. town, quests, shops
-	TownLogic.new_day(self, new_day)
-	QuestLogic.new_day(self, new_day)
+	town_logic.new_day(new_day)
+	quest_logic.new_day(new_day)
 	# 5. chronicle of the season
 	if new_season != old_season:
 		w["chronicle"].append({"d": new_day, "s": "%s arrived." % Items.season_name(new_season), "k": "season"})

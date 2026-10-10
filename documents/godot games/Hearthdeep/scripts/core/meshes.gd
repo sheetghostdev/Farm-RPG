@@ -45,7 +45,7 @@ void fragment() {
 	ALBEDO = mix(glass, COLOR.rgb * 0.6, 0.25 + 0.5 * night_amount);
 	ROUGHNESS = 0.15;
 	SPECULAR = 0.8;
-	EMISSION = COLOR.rgb * (0.15 + 1.6 * night_amount);
+	EMISSION = COLOR.rgb * vec3(1.0, 0.8, 0.55) * (0.1 + 0.95 * night_amount);
 }
 """
 
@@ -58,6 +58,7 @@ uniform float roughness_v = 0.88;
 uniform float snow_ok = 1.0;
 uniform float cut_ok = 0.0;
 uniform float emission_v = 0.0;
+uniform float hide = 0.0;
 varying vec3 wpos;
 varying vec3 wnorm;
 %s
@@ -67,6 +68,7 @@ void vertex() {
 	wnorm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
 void fragment() {
+	if (hide > 0.5 && wpos.y > player_pos.y + 1.5) { discard; }
 	if (cut_ok > 0.5) { cutaway(wpos, CAMERA_POSITION_WORLD, FRAGCOORD.xy); }
 	vec3 col = COLOR.rgb;
 	float n = vnoise(wpos.xz * 3.1 + wpos.y * 1.7);
@@ -284,6 +286,8 @@ func mat(nm: String) -> Material:
 			m = _sm(SH_VC % [NOISE, CUTAWAY], {"snow_ok": 0.0})
 		"vc_cut":
 			m = _sm(SH_VC % [NOISE, CUTAWAY], {"cut_ok": 1.0})
+		"vc_hidden":
+			m = _sm(SH_VC % [NOISE, CUTAWAY], {"hide": 1.0})
 		"vc_shiny":
 			m = _sm(SH_VC % [NOISE, CUTAWAY], {"roughness_v": 0.3, "snow_ok": 0.0})
 		"vc_soft_glow":

@@ -177,14 +177,14 @@ func _surface(delta: float, focus: Vector3) -> void:
 		"fog":
 			overcast = 0.5
 	sun.light_color = sun_col.lerp(moon_col, 1.0 - dl)
-	sun.light_energy = lerp(0.18, 1.45 - overcast * 0.75, dl)
+	sun.light_energy = lerp(0.32, 1.45 - overcast * 0.75, dl)
 	sun.shadow_enabled = true
 	sun.visible = true
 	# sky
 	var top_day := Color(0.33, 0.56, 0.86).lerp(Color(0.5, 0.55, 0.6), overcast)
 	var hor_day := Color(0.72, 0.82, 0.9).lerp(Color(0.68, 0.7, 0.72), overcast)
-	var top_night := Color(0.03, 0.04, 0.1)
-	var hor_night := Color(0.1, 0.12, 0.2)
+	var top_night := Color(0.05, 0.07, 0.16)
+	var hor_night := Color(0.16, 0.19, 0.3)
 	var dusk_col := Color(0.95, 0.55, 0.35)
 	sky_mat.sky_top_color = top_night.lerp(top_day, dl)
 	sky_mat.sky_horizon_color = hor_night.lerp(hor_day, dl).lerp(dusk_col, dusk * 0.7 * (1.0 - overcast))
@@ -193,7 +193,7 @@ func _surface(delta: float, focus: Vector3) -> void:
 	sky_mat.sky_energy_multiplier = lerp(0.35, 1.0, dl)
 	env.background_mode = Environment.BG_SKY
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = lerp(0.3, 0.55 + overcast * 0.2, dl)
+	env.ambient_light_energy = lerp(0.55, 0.55 + overcast * 0.2, dl)
 	env.fog_enabled = true
 	var fog_col := sky_mat.sky_horizon_color
 	var dens := 0.0012 + overcast * 0.003

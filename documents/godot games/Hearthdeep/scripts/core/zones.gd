@@ -5,6 +5,7 @@ extends Node
 signal zone_entered(zone_id: String)
 
 var world_root: Node3D
+var town: TownGen = null
 var zones := {}
 var players := {}          # peer id -> Player
 var _gen: OverworldGen = null
@@ -12,6 +13,8 @@ var _gen_seed := -1
 var pickups := {}          # server: pid -> {"z", "item", "pos"}
 var _next_pid := 1
 var night_lights: Array = []
+var occluders: Array = []   # [{mi, zone, center, half, yaw}] buildings that hide their roof when in the way
+var _occ_t := 0.0
 var enemies := {}          # eid -> Enemy (local nodes)
 var _enemy_srv := {}       # server: eid -> zone id
 var _next_eid := 1
@@ -104,9 +107,57 @@ func clear_all() -> void:
 	_enemy_srv.clear()
 	pickups.clear()
 	night_lights.clear()
+	occluders.clear()
 
 func register_night_light(l: Light3D) -> void:
 	night_lights.append(l)
+
+## Buildings register so their roof and upper walls can vanish when they block the view.
+func register_occluder(mi: MeshInstance3D, zid: String, center: Vector3, half: Vector3, yaw: float) -> void:
+	occluders.append({"mi": mi, "z": zid, "c": center, "h": half, "yaw": yaw, "hidden": false})
+
+func _update_occluders() -> void:
+	var lp = Game.local_player
+	if lp == null or Game.main == null or Game.main.cam == null:
+		return
+	var cam_p: Vector3 = Game.main.cam.cam.global_position
+	var head: Vector3 = lp.global_position + Vector3(0, 1.2, 0)
+	var keep: Array = []
+	for o in occluders:
+		if not is_instance_valid(o["mi"]):
+			continue
+		keep.append(o)
+		var hide := false
+		if o["z"] == lp.zone_id and Vector3(o["c"]).distance_to(head) < 40.0:
+			hide = _segment_hits_box(cam_p, head, o["c"], o["h"], o["yaw"])
+		if hide != o["hidden"]:
+			o["hidden"] = hide
+			o["mi"].material_override = Meshes.mat("vc_hidden") if hide else null
+	occluders = keep
+
+static func _segment_hits_box(a: Vector3, b: Vector3, c: Vector3, h: Vector3, yaw: float) -> bool:
+	var inv := Basis(Vector3.UP, -yaw)
+	var la := inv * (a - c)
+	var lb := inv * (b - c)
+	var d := lb - la
+	var t0 := 0.0
+	var t1 := 1.0
+	for i in 3:
+		if abs(d[i]) < 1e-6:
+			if la[i] < -h[i] or la[i] > h[i]:
+				return false
+		else:
+			var ta := (-h[i] - la[i]) / d[i]
+			var tb := (h[i] - la[i]) / d[i]
+			if ta > tb:
+				var tmp := ta
+				ta = tb
+				tb = tmp
+			t0 = max(t0, ta)
+			t1 = min(t1, tb)
+			if t0 > t1:
+				return false
+	return true
 
 ## Zones the server must keep simulated: every zone with a player in it.
 func _needed_zones() -> Dictionary:
@@ -131,6 +182,10 @@ func _process(delta: float) -> void:
 		for zid in zones.keys():
 			if not need.has(zid):
 				unload_zone(zid)
+	_occ_t += delta
+	if _occ_t > 0.1:
+		_occ_t = 0.0
+		_update_occluders()
 	if Net.is_server():
 		_snap_t += delta
 		if _snap_t >= 0.066:
