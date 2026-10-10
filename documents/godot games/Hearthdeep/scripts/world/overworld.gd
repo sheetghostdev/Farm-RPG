@@ -541,17 +541,13 @@ func _cyl_body(pos: Vector3, r: float, h: float) -> void:
 
 var farmhouse_mi: MeshInstance3D
 var farmhouse_body: StaticBody3D
+var _house_level := 0
 
 func _build_farm() -> void:
 	_build_farmhouse()
 	var fr := gen.farm_rect
 	var hp := farmhouse_pos()
-	var bin_p := hp + Vector3(5.5 + int(Game.world["farm"].get("level", 0)) * 1.3, 0, 4.2)
-	var bin := Feature.new().setup("ship_bin", "ship_bin", "Shipping bin", bin_p, 1.0)
-	add_child(bin)
-	bin.set_mesh(Props.get_mesh("shipping_bin", 0))
-	bin.add_box_blocker(Vector3(1.4, 0.9, 0.9))
-	register(bin)
+	_build_ship_bin()
 	var well_p := Vector3(fr.position.x + 6, gen.farm_h, fr.position.y + 9)
 	var well := Feature.new().setup("farm_well", "well", "Draw water", well_p, 1.1)
 	add_child(well)
@@ -579,6 +575,7 @@ func _build_farmhouse() -> void:
 	if farmhouse_body:
 		farmhouse_body.queue_free()
 	var lvl := int(Game.world.get("farm", {}).get("level", 0))
+	_house_level = lvl
 	var hp := farmhouse_pos()
 	farmhouse_mi = Meshes.inst(Props.get_mesh("farmhouse", lvl), struct_root, hp)
 	var w := 7.0 + lvl * 2.5
@@ -601,7 +598,21 @@ func _build_farmhouse() -> void:
 	register(door)
 
 func upgrade_farmhouse() -> void:
+	if int(Game.world.get("farm", {}).get("level", 0)) == _house_level:
+		return
 	_build_farmhouse()
+	_build_ship_bin()
+	Fx.sparkle(fx_root, farmhouse_pos() + Vector3(0, 3, 0), Color("ffe08a"), 40, 4.0)
+
+func _build_ship_bin() -> void:
+	if objs.has("ship_bin"):
+		remove_obj("ship_bin", false)
+	var bin_p := farmhouse_pos() + Vector3(5.5 + _house_level * 1.3, 0, 4.2)
+	var bin := Feature.new().setup("ship_bin", "ship_bin", "Shipping bin", bin_p, 1.0)
+	add_child(bin)
+	bin.set_mesh(Props.get_mesh("shipping_bin", 0))
+	bin.add_box_blocker(Vector3(1.4, 0.9, 0.9))
+	register(bin)
 
 func _spawn_placed(oid: String, o: Dictionary) -> void:
 	if objs.has(oid):
@@ -710,6 +721,7 @@ func _spawn_forage() -> void:
 		forage_ids.append(id2)
 
 func on_new_day() -> void:
+	upgrade_farmhouse()
 	_spawn_forage()
 	for s in gen.spawns:
 		if s["k"] != "bush" and not objs.has(s["id"]):

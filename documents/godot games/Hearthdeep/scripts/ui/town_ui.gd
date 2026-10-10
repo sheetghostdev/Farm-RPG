@@ -240,6 +240,8 @@ class DialogueWin extends UIWin:
 			_opt("Let me see what you have.", func(): ui.show_win(ShopWindow.new(shop, TownGen.ROLE_INFO[role]["building"])))
 		if role == "smith" and npc.at_work():
 			_opt("About your forge services...", func(): ui.show_win(SmithWindow.new()))
+		if role == "carpenter" and npc.at_work():
+			_opt("About fixing up our farmhouse...", func(): ui.show_win(RenovateWindow.new()))
 		if role == "mayor":
 			_opt("How are the town projects coming along?", func(): ui.show_win(BoardWindow.new("projects")))
 		for r in QuestLogic.for_npc(npc_id):

@@ -70,6 +70,8 @@ func init_new_world() -> void:
 			tiles[k] = {"till": true, "wet": false}
 	Game.world["farm"]["tiles"] = tiles
 	Game.world["know"]["recipes"]["chest"] = {"day": 1, "by": ""}
+	for id in ["wood", "stone", "turnip_seeds", "bandage"]:
+		Game.world["know"]["items"][id] = {"day": 1, "by": "", "known": Items.def(id).get("known", false)}
 	Game.world["chronicle"].append({"d": 1, "s": "A small group arrived at an overgrown homestead near %s." % TownGen.town_name(), "k": "founding"})
 
 func _new_obj(item: String, zid: String, pos: Vector3, rot: int, d: Dictionary, broadcast: bool = true) -> String:
@@ -127,6 +129,12 @@ func _a_explore(_peer: int, a: Dictionary) -> void:
 	if cells.size() > 400:
 		return
 	_ch({"t": "explored", "v": cells})
+
+func _a_cave_explore(_peer: int, a: Dictionary) -> void:
+	var cells: PackedInt32Array = a["cells"]
+	if cells.size() > 2000:
+		return
+	_ch({"t": "cave_seen", "f": int(a["f"]), "v": cells})
 
 func _a_enter_zone(peer: int, a: Dictionary) -> void:
 	Zones.server_enter_zone(peer, a["z"])
@@ -639,6 +647,18 @@ func _a_learn_recipe(peer: int, a: Dictionary) -> void:
 		return
 	_ch({"t": "recipe", "id": id, "by": a.get("by", pname(peer))})
 	chronicle("%s worked out how to make %s." % [pname(peer), Items.def(id)["name"]], "recipe")
+
+func _a_map_pin(peer: int, a: Dictionary) -> void:
+	var pins: Array = Game.world["know"].get("pins", []).duplicate(true)
+	if a.get("op", "") == "del":
+		var i := int(a.get("i", -1))
+		if i >= 0 and i < pins.size():
+			pins.remove_at(i)
+	else:
+		if pins.size() >= 60:
+			pins.remove_at(0)
+		pins.append({"z": String(a.get("z", "over")), "p": Vector2(a.get("p", Vector2.ZERO)), "c": a.get("c", Color("ffd27a")), "by": pname(peer), "d": Game.day()})
+	_ch({"t": "pins", "v": pins})
 
 func _a_found_note(peer: int, a: Dictionary) -> void:
 	var i := int(a["i"])

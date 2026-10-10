@@ -18,6 +18,11 @@ const PROJECTS := [
 	{"id": "smithy", "name": "Smithy Expansion", "desc": "A bigger forge: better weapons in stock and trait reforging.", "needs": {"iron_bar": 20, "gold_bar": 5}, "coins": 4000, "level": 3},
 	{"id": "cottages2", "name": "Hillside Homes", "desc": "Room for even more families to settle in town.", "needs": {"hardwood": 40, "stone": 120, "iron_bar": 5}, "coins": 4000, "level": 4},
 ]
+## Farmhouse renovations, done by the carpenter overnight.
+const HOUSE_UPGRADES := [
+	{"name": "Renovated Farmhouse", "desc": "A roomier interior with a kitchen counter, a window seat and more windows.", "needs": {"wood": 150, "stone": 50}, "coins": 3000},
+	{"name": "Two-Storey Farmhouse", "desc": "A loft upstairs, a reading nook, and a workshop wing on the side.", "needs": {"hardwood": 40, "stone": 120, "iron_bar": 10}, "coins": 10000},
+]
 const SPECIALTY := {
 	"general": ["crop", "fruit", "forage", "animal", "seed", "sapling"], "blacksmith": ["ore", "bar", "mineral", "gem", "weapon", "tool"],
 	"tavern": ["food", "drink", "fish"], "herbalist": ["herb", "mushroom", "brew", "monster"], "carpenter": ["material", "placeable"],
@@ -105,6 +110,12 @@ func new_day(day: int) -> void:
 					t["newcomers"] = int(t.get("newcomers", 0)) + 1
 	if built_any:
 		srv._toast("Something in town has changed overnight...", Color("ffe08a"))
+	var pending := int(Game.world["flags"].get("house_pending", 0))
+	if pending > int(Game.world["farm"].get("level", 0)):
+		Game.world["farm"]["level"] = pending
+		Game.world["flags"]["house_pending"] = 0
+		Game.world["chronicle"].append({"d": day, "s": "The carpenter finished the work: the household now lives in a %s." % HOUSE_UPGRADES[pending - 1]["name"].to_lower(), "k": "home"})
+		srv._toast("The farmhouse renovation is finished!", Color("ffe08a"))
 
 static func project(pid: String) -> Dictionary:
 	for p in PROJECTS:
@@ -198,6 +209,11 @@ func a_gift(peer: int, a: Dictionary) -> void:
 		pts *= 2
 	_add_friend(npc_id, pl, pts, peer)
 	Net.tell(peer, "npc_say", {"npc": npc_id, "text": r.get("text", "Thank you."), "level": r.get("level", "neutral")})
+	var ts: Dictionary = town().get("tastes", {}).duplicate(true)
+	if not ts.has(npc_id):
+		ts[npc_id] = {}
+	ts[npc_id][item] = r.get("level", "neutral")
+	set_town("tastes", ts)
 	if not Game.is_known(item):
 		srv._ch({"t": "learn_item", "id": item, "by": pl})
 
@@ -363,6 +379,30 @@ func a_upgrade_tool(peer: int, a: Dictionary) -> void:
 		out["d"]["nm"] = Items.traited_name(next, out["d"]["tr"])
 	Net.grant(peer, [out])
 	srv.chronicle("%s had their %s upgraded at the smithy." % [srv.pname(peer), Items.def(it["id"])["name"].to_lower()], "trade")
+
+func a_house_upgrade(peer: int, a: Dictionary) -> void:
+	var items: Array = a.get("items", [])
+	var lvl := int(Game.world["farm"].get("level", 0))
+	if lvl >= HOUSE_UPGRADES.size() or int(Game.world["flags"].get("house_pending", 0)) > lvl:
+		Net.grant(peer, items, true)
+		return
+	var up: Dictionary = HOUSE_UPGRADES[lvl]
+	var given := {}
+	for it in items:
+		given[it["id"]] = int(given.get(it["id"], 0)) + int(it["n"])
+	for id in up["needs"]:
+		if int(given.get(id, 0)) < int(up["needs"][id]):
+			Net.grant(peer, items, true)
+			Net.tell(peer, "toast", {"text": "That's not quite enough material.", "color": Color("ff9a7a")})
+			return
+	if Game.money() < int(up["coins"]):
+		Net.grant(peer, items, true)
+		Net.tell(peer, "toast", {"text": "Not enough coins.", "color": Color("ff9a7a")})
+		return
+	srv.add_money(-int(up["coins"]), "house")
+	srv._ch({"t": "flag", "k": "house_pending", "v": lvl + 1})
+	srv.chronicle("%s hired the carpenter to renovate the farmhouse." % srv.pname(peer), "home")
+	srv._toast("The carpenter will have the farmhouse ready by tomorrow morning.", Color("ffe08a"))
 
 # ------------------------------------------------------------------ friendship milestones
 

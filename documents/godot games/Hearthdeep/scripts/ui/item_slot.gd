@@ -13,6 +13,7 @@ var hotkey := ""
 var dim := false
 var price := -1
 var note := ""
+var silhouette := false     # undiscovered: show only a shadow of the thing
 var sz := 56.0
 
 func _init(s: float = 56.0) -> void:
@@ -44,6 +45,12 @@ func _draw() -> void:
 	if traits.size() > Items.def(item["id"]).get("traits", []).size():
 		draw_rect(r.grow(-3), Color(1.0, 0.85, 0.4, 0.12))
 	var pad := size.x * 0.1
+	if silhouette:
+		var f0 := get_theme_default_font()
+		var qs := int(size.y * 0.45)
+		var qw := f0.get_string_size("?", HORIZONTAL_ALIGNMENT_LEFT, -1, qs).x
+		draw_string(f0, Vector2((size.x - qw) / 2.0, size.y / 2.0 + qs * 0.35), "?", HORIZONTAL_ALIGNMENT_LEFT, -1, qs, Color(0.55, 0.45, 0.35, 0.6))
+		return
 	IconPainter.draw_item(self, item["id"], r.grow(-pad), 0.45 if dim else 1.0)
 	var font := get_theme_default_font()
 	var n := int(item.get("n", 1))

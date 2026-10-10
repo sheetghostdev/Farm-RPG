@@ -13,6 +13,10 @@ var astar: AStarGrid2D
 var map_tex: ImageTexture
 var waystone_feature: Feature
 var _wander_t := 60.0
+var _seen_t := 0.0
+var _seen_send_t := 0.0
+var _seen_pending := PackedInt32Array()
+var _map_dirty := true
 var _initial_enemies := 0
 
 func _init() -> void:
@@ -484,9 +488,13 @@ func path_to(from: Vector3, to: Vector3) -> PackedVector3Array:
 func _build_map() -> void:
 	var img := Image.create(gen.W, gen.H, false, Image.FORMAT_RGBA8)
 	var fc: Color = gen.biome["floor"].lightened(0.25)
+	var seen := seen_bytes()
 	for y in gen.H:
 		for x in gen.W:
 			var c := Color(0.06, 0.05, 0.05)
+			if seen[y * gen.W + x] == 0:
+				img.set_pixel(x, y, Color(0.03, 0.025, 0.025, 0.0))
+				continue
 			match gen.get_t(Vector2i(x, y)):
 				CaveGen.T.FLOOR:
 					c = fc
@@ -499,25 +507,75 @@ func _build_map() -> void:
 				CaveGen.T.PIT:
 					c = Color(0.0, 0.0, 0.0)
 			img.set_pixel(x, y, c)
-	map_tex = ImageTexture.create_from_image(img)
+	if map_tex:
+		map_tex.update(img)
+	else:
+		map_tex = ImageTexture.create_from_image(img)
+	_map_dirty = false
 
 func map_texture() -> Texture2D:
+	if _map_dirty:
+		_build_map()
 	return map_tex
+
+## Which cells of this floor the household has seen (shared, saved with the world).
+func seen_bytes() -> PackedByteArray:
+	var know: Dictionary = Game.world["know"]
+	if not know.has("cave_seen"):
+		know["cave_seen"] = {}
+	var b = know["cave_seen"].get(floor_n, null)
+	if b == null or (b as PackedByteArray).size() != gen.W * gen.H:
+		b = PackedByteArray()
+		b.resize(gen.W * gen.H)
+		b.fill(0)
+		know["cave_seen"][floor_n] = b
+	return b
+
+func is_seen_at(p: Vector3) -> bool:
+	var c := world_to_cell(p)
+	if c.x < 0 or c.y < 0 or c.x >= gen.W or c.y >= gen.H:
+		return false
+	return seen_bytes()[c.y * gen.W + c.x] != 0
+
+func _reveal_around(p: Vector3) -> void:
+	var seen := seen_bytes()
+	var c0 := world_to_cell(p)
+	var r := 7
+	var changed := false
+	for dy in range(-r, r + 1):
+		for dx in range(-r, r + 1):
+			if dx * dx + dy * dy > r * r:
+				continue
+			var c := c0 + Vector2i(dx, dy)
+			if c.x < 0 or c.y < 0 or c.x >= gen.W or c.y >= gen.H:
+				continue
+			var i := c.y * gen.W + c.x
+			if seen[i] == 0:
+				seen[i] = 1
+				_seen_pending.append(i)
+				changed = true
+	if changed:
+		Game.world["know"]["cave_seen"][floor_n] = seen
+		_map_dirty = true
 
 func map_rect() -> Rect2:
 	return Rect2(origin.x, origin.z, gen.W * CELL, gen.H * CELL)
 
 func map_markers() -> Array:
 	var out: Array = [
-		{"p": cell_center(Vector2(gen.start_cell) + Vector2(0.5, 0.5)), "c": Color("9ae68a")},
-		{"p": cell_center(Vector2(gen.exit_cell) + Vector2(0.5, 0.5)), "c": Color("9ab0ff")},
+		{"p": cell_center(Vector2(gen.start_cell) + Vector2(0.5, 0.5)), "c": Color("9ae68a"), "label": "Ladder up"},
+		{"p": cell_center(Vector2(gen.exit_cell) + Vector2(0.5, 0.5)), "c": Color("9ab0ff"), "label": "Way down"},
 	]
 	if gen.waystone_cell.x >= 0:
-		out.append({"p": cell_center(Vector2(gen.waystone_cell) + Vector2(0.5, 0.5)), "c": Color("7fe3ff")})
+		out.append({"p": cell_center(Vector2(gen.waystone_cell) + Vector2(0.5, 0.5)), "c": Color("7fe3ff"), "label": "Waystone"})
 	for o in objs.values():
 		if o is ResourceNode and o.sub == "quest_item":
-			out.append({"p": o.global_position, "c": Color("ffd36b")})
-	return out
+			out.append({"p": o.global_position, "c": Color("ffd36b"), "label": "Keepsake"})
+	var seen_only: Array = []
+	for m in out:
+		if is_seen_at(m["p"]):
+			seen_only.append(m)
+	return seen_only
 
 # ------------------------------------------------------------------ server-side life
 
@@ -538,7 +596,20 @@ func on_player_entered_server(peer: int) -> void:
 		Net.tell(peer, "stat", {"k": "floors_descended", "n": 1})
 
 func _process(delta: float) -> void:
-	if not Net.is_server() or not built:
+	if not built:
+		return
+	var lp = Game.local_player
+	if lp and lp.zone_id == zone_id:
+		_seen_t -= delta
+		if _seen_t <= 0.0:
+			_seen_t = 0.4
+			_reveal_around(lp.global_position)
+		_seen_send_t -= delta
+		if _seen_send_t <= 0.0 and not _seen_pending.is_empty():
+			_seen_send_t = 1.5
+			Net.request("cave_explore", {"f": floor_n, "cells": _seen_pending})
+			_seen_pending = PackedInt32Array()
+	if not Net.is_server():
 		return
 	_wander_t -= delta
 	if _wander_t <= 0.0:
@@ -590,6 +661,9 @@ func _on_change(k: String, ch: Dictionary) -> void:
 				objs[ch["id"]].on_data(ch["v"])
 		"quests":
 			_spawn_keepsakes()
+		"cave_seen":
+			if int(ch["f"]) == floor_n:
+				_map_dirty = true
 
 func on_new_day() -> void:
 	pass

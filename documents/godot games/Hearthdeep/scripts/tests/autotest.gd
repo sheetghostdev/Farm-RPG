@@ -26,6 +26,9 @@ func _frames(n: int) -> void:
 		await get_tree().process_frame
 
 func _shot(name: String) -> void:
+	if DisplayServer.get_name() == "headless":
+		await get_tree().process_frame
+		return
 	await RenderingServer.frame_post_draw
 	var img := get_viewport().get_texture().get_image()
 	var p := ProjectSettings.globalize_path(out_dir + "/" + name + ".png")
@@ -546,10 +549,104 @@ func _run_fish(_a: Array) -> void:
 		await _frames(4)
 		await _shot("fishing_game")
 		if f.game:
-			f.game.progress = 1.0
+			f.game.progress = 1.5
 		await _frames(5)
 	await _frames(5)
 	_check(Game.world["know"]["fish"].size() > 0 or Game.inv.count("old_boot") + Game.inv.count("driftwood") + Game.inv.count("river_weed") + Game.inv.count("soggy_letter") > 0, "caught something (%s)" % f.fish_id)
 	_log("fish log: %s" % str(Game.world["know"]["fish"]))
+	_log("DONE fails=%d" % _fails)
+	get_tree().quit()
+
+## Farmhouse interior, renovations, the journal and the map.
+func _run_home(_a: Array) -> void:
+	_start_world(12345)
+	await _frames(10)
+	var lp = Game.local_player
+	var ui: UIRoot = Game.main.ui
+	var over = Zones.get_zone("over")
+	var door = over.objs.get("farm_door")
+	_check(door != null, "farmhouse has a door")
+	Game.main.on_feature(door, lp)
+	await _frames(60)
+	_check(lp.zone_id == "home", "walked inside (zone %s)" % lp.zone_id)
+	var home: HomeZone = Zones.get_zone("home")
+	_check(home.objs.has("hearth") and home.objs.has("home_door") and home.objs.has("home_journal"), "hearth, door and journal exist")
+	var beds := home.objs.values().filter(func(o): return o is PlacedObj and o.obj_type == "bed")
+	_check(beds.size() == 1, "starter bed inside")
+	_check(not home.is_blocked(lp.global_position), "spawned on a free spot")
+	await _frames(30)
+	_check(abs(lp.global_position.y - home.origin.y) < 0.6, "standing on the floor (y=%.2f)" % lp.global_position.y)
+	var bp: Vector3 = home.spawn_point("bed")
+	_check(not home.is_blocked(bp), "bed spawn is free")
+	Game.tod = 300.0
+	await _frames(25)
+	await _shot("home_day")
+	Game.tod = 1000.0
+	await _frames(25)
+	await _shot("home_night")
+	Game.tod = 300.0
+	lp.global_position = home.objs["hearth"].global_position + Vector3(0, 0.2, 0.8)
+	await _frames(3)
+	Game.main.on_feature(home.objs["hearth"], lp)
+	await _frames(5)
+	_check(ui.current is CookWindow, "hearth opens cooking")
+	ui.close()
+	Game.chronicle("A line written by hand.", "note")
+	await _frames(3)
+	for t in JournalWindow.TABS:
+		ui.open_journal(t)
+		await _frames(4)
+		_check(ui.current is JournalWindow and ui.current.tab == t, "journal tab %s opens" % t)
+		if t in ["Chronicle", "Collection", "Fish", "People", "Household"]:
+			await _shot("journal_" + t.to_lower())
+	ui.close()
+	# renovations, done overnight by the carpenter
+	Net.server.add_money(20000, "")
+	await _frames(2)
+	Net.request("house_upgrade", {"items": [Items.make("wood", 150), Items.make("stone", 50)]})
+	await _frames(3)
+	_check(int(Game.world["flags"].get("house_pending", 0)) == 1, "renovation ordered")
+	Net.server.start_new_day()
+	await _frames(20)
+	_check(int(Game.world["farm"]["level"]) == 1, "farmhouse upgraded overnight")
+	_check(home.level == 1, "interior grew to level %d" % home.level)
+	_check(not home.is_blocked(lp.global_position), "player not stuck after the rebuild")
+	Game.tod = 300.0
+	await _frames(25)
+	await _shot("home_lvl1")
+	Net.request("house_upgrade", {"items": [Items.make("hardwood", 40), Items.make("stone", 120), Items.make("iron_bar", 10)]})
+	await _frames(3)
+	Net.server.start_new_day()
+	await _frames(20)
+	_check(home.level == 2, "interior grew to level 2")
+	Game.tod = 300.0
+	lp.global_position = home.spawn_point("")
+	await _frames(25)
+	await _shot("home_lvl2")
+	Game.main.on_feature(home.objs["home_door"], lp)
+	await _frames(60)
+	_check(lp.zone_id == "over", "back outside")
+	Game.tod = 300.0
+	Game.main.cam.target_dist = 20.0
+	await _frames(40)
+	await _shot("farm_lvl2")
+	ui.open_map()
+	await _frames(10)
+	Net.request("map_pin", {"op": "add", "z": "over", "p": Vector2(lp.global_position.x + 20, lp.global_position.z + 10), "c": Color("e05a4a")})
+	await _frames(10)
+	_check(Game.world["know"].get("pins", []).size() == 1, "map pin dropped")
+	await _shot("map_over")
+	ui.close()
+	Zones.travel_local("cave_1", null, "up")
+	await _frames(90)
+	var cave: CaveFloor = Zones.get_zone("cave_1")
+	var seen := 0
+	for b in cave.seen_bytes():
+		seen += b
+	_check(seen > 20, "cave floor partly mapped (%d cells)" % seen)
+	ui.open_map()
+	await _frames(10)
+	await _shot("map_cave")
+	ui.close()
 	_log("DONE fails=%d" % _fails)
 	get_tree().quit()

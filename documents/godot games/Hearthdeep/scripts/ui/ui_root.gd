@@ -90,11 +90,17 @@ func _unhandled_input(e: InputEvent) -> void:
 		elif current == null:
 			open_inventory()
 		get_viewport().set_input_as_handled()
-	elif e.is_action_pressed("map") and current == null:
-		open_map()
+	elif e.is_action_pressed("map") and (current == null or current.kind == "map"):
+		if current:
+			close()
+		else:
+			open_map()
 		get_viewport().set_input_as_handled()
-	elif e.is_action_pressed("journal") and current == null:
-		open_journal()
+	elif e.is_action_pressed("journal") and (current == null or current.kind == "journal"):
+		if current:
+			close()
+		else:
+			open_journal()
 		get_viewport().set_input_as_handled()
 	elif e.is_action_pressed("craft") and current == null:
 		open_craft("field", null)
@@ -130,7 +136,7 @@ func _on_world_changed(k: String, ch: Dictionary) -> void:
 		"obj_data":
 			if current.obj and is_instance_valid(current.obj) and current.obj.oid == ch["id"]:
 				_queue_refresh()
-		"shipping", "money", "know_item", "learn_item", "recipe", "quests", "town", "new_day":
+		"shipping", "money", "know_item", "learn_item", "recipe", "quests", "town", "new_day", "chronicle", "fish", "place", "people", "pins", "flag", "note":
 			_queue_refresh()
 
 # ------------------------------------------------------------------ windows

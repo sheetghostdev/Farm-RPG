@@ -488,6 +488,8 @@ func apply_change(ch: Dictionary) -> void:
 				world["know"]["notes"].append(int(ch["v"]))
 		"explored":
 			_apply_explored(ch["v"])
+		"cave_seen":
+			_apply_cave_seen(int(ch["f"]), ch["v"])
 		"chronicle":
 			world["chronicle"].append(ch["v"])
 			chronicle_added.emit(ch["v"])
@@ -501,6 +503,8 @@ func apply_change(ch: Dictionary) -> void:
 			world["flags"][ch["k"]] = ch["v"]
 		"people":
 			world["know"]["people"][ch["id"]] = ch["v"]
+		"pins":
+			world["know"]["pins"] = ch["v"]
 		"farm_level":
 			world["farm"]["level"] = int(ch["v"])
 		"new_day":
@@ -525,6 +529,22 @@ func _apply_explored(cells: PackedInt32Array) -> void:
 		if c >= 0 and c < ex.size():
 			ex[c] = 1
 	world["explored"] = ex
+
+func _apply_cave_seen(f: int, cells: PackedInt32Array) -> void:
+	var know: Dictionary = world["know"]
+	if not know.has("cave_seen"):
+		know["cave_seen"] = {}
+	var b = know["cave_seen"].get(f, null)
+	if b == null:
+		var dm := CaveGen.dims(f)
+		b = PackedByteArray()
+		b.resize(dm.x * dm.y)
+		b.fill(0)
+	var bytes: PackedByteArray = b
+	for c in cells:
+		if c >= 0 and c < bytes.size():
+			bytes[c] = 1
+	know["cave_seen"][f] = bytes
 
 func chronicle(text: String, kind: String = "event") -> void:
 	Net.request("chronicle", {"s": text, "k": kind})

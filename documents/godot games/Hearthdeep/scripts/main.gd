@@ -99,6 +99,10 @@ func _enter_world(char_data: Dictionary) -> void:
 	menu.visible = false
 	hud.fade.color.a = 1.0
 	Game.load_character(char_data)
+	for i in Game.inv.slots.size():
+		var it: Dictionary = Game.inv.slots[i]
+		if not it.is_empty():
+			Game.discover_item(it["id"])
 	Zones.clear_all()
 	var over := Zones.ensure_zone("over") as Overworld
 	var zid: String = char_data.get("zone", "over")
@@ -204,6 +208,7 @@ func on_zone_changed(z: Zone) -> void:
 	cam.set_zone_style(z.underground(), z.kind == "home")
 	cam.snap()
 	hud.zone_l.text = z.display_name()
+	hud.minimap.visible = z.kind != "home"
 
 func _on_day_started(d: int) -> void:
 	for z in Zones.zones.values():
@@ -266,6 +271,12 @@ func on_feature(f: Feature, player) -> void:
 			ui.open_cave_menu(true)
 		"ship_bin":
 			ui.open_shipping()
+		"hearth":
+			var cw := CookWindow.new(f, false)
+			cw.title_l.text = "The Hearth"
+			ui.show_win(cw)
+			if player.hp < player.max_hp():
+				Game.add_buff("regen", 0.2, 60.0)
 		"well":
 			Game.say("Fill your watering can here (use it on the well).", UITheme.TEXT)
 		"chronicle":

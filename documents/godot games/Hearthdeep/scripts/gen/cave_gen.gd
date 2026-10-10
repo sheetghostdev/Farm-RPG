@@ -47,13 +47,17 @@ static func biome_index(f: int) -> int:
 		return 5
 	return clamp((f - 1) / 5, 0, 5)
 
+## Grid size of a floor (deeper floors are bigger).
+static func dims(f: int) -> Vector2i:
+	return Vector2i(44 + min(f, 24), 44 + min(f, 24))
+
 func generate(seed_value: int, f: int) -> void:
 	floor_n = f
 	biome_i = biome_index(f)
 	biome = BIOMES[biome_i]
 	rng.seed = Game.hash_ints(seed_value, 5150, f)
-	W = 44 + min(f, 24)
-	H = 44 + min(f, 24)
+	W = dims(f).x
+	H = dims(f).y
 	grid.resize(W * H)
 	grid.fill(T.WALL)
 	_rooms()
