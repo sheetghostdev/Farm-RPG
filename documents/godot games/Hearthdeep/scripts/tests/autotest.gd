@@ -159,3 +159,170 @@ func _run_gallery(a: Array) -> void:
 	await _frames(20)
 	await _shot("gallery_" + set_name)
 	get_tree().quit()
+
+var _fails := 0
+
+func _check(cond: bool, what: String) -> void:
+	if cond:
+		_log("PASS " + what)
+	else:
+		_fails += 1
+		_log("FAIL " + what)
+
+func _nearest_res(sub: String):
+	var z = Zones.get_zone("over")
+	var lp = Game.local_player
+	var best = null
+	var bd := 1e9
+	for o in z.objs.values():
+		if o is ResourceNode and o.sub == sub:
+			var d: float = o.global_position.distance_to(lp.global_position)
+			if d < bd:
+				bd = d
+				best = o
+	return best
+
+## Exercises core loops without input: --autotest=play
+func _run_play(_a: Array) -> void:
+	_start_world()
+	await _frames(10)
+	var lp = Game.local_player
+	var z = Zones.get_zone("over")
+	# gathering
+	var wood0 := Game.inv.count("wood")
+	var tree = _nearest_res("oak")
+	if tree == null:
+		tree = _nearest_res("pine")
+	_check(tree != null, "found a tree")
+	tree.tool_hit(lp, "axe", 0, 100.0)
+	await _frames(5)
+	_check(Game.inv.count("wood") > wood0, "chopping gives wood (%d -> %d)" % [wood0, Game.inv.count("wood")])
+	_check(not z.objs.has(tree.oid), "tree removed after felling")
+	var stone0 := Game.inv.count("stone")
+	var rock = _nearest_res("rock")
+	rock.tool_hit(lp, "pick", 0, 100.0)
+	await _frames(5)
+	_check(Game.inv.count("stone") > stone0, "mining gives stone")
+	var weed = _nearest_res("weed")
+	weed.interact(lp)
+	await _frames(5)
+	_check(not z.objs.has(weed.oid), "weed pulled")
+	# farming
+	var g = z.gen
+	var k := Vector2i(int(g.farm_rect.get_center().x) + 6, int(g.farm_rect.get_center().y) + 12)
+	var free_k := k
+	for dx in 10:
+		var kk := k + Vector2i(dx, 0)
+		if z.farm.can_till(kk):
+			free_k = kk
+			break
+	Net.request("till", {"tiles": [free_k]})
+	await _frames(2)
+	_check(Game.world["farm"]["tiles"].has(free_k), "tilled a tile")
+	Net.request("plant", {"k": free_k, "crop": "turnip", "by": "Tester"})
+	Net.request("water", {"tiles": [free_k]})
+	await _frames(2)
+	_check(Game.world["farm"]["tiles"][free_k].get("crop", {}).get("id", "") == "turnip", "planted turnip")
+	_check(Game.world["farm"]["tiles"][free_k].get("wet", false), "watered")
+	for d in 4:
+		Net.request("water", {"tiles": [free_k]})
+		Net.server.start_new_day()
+		await _frames(2)
+	_check(z.farm.crop_stage(Game.world["farm"]["tiles"][free_k]) == 4, "turnip matured after 4 watered days (stage %d)" % z.farm.crop_stage(Game.world["farm"]["tiles"][free_k]))
+	var t0 := Game.inv.count("turnip")
+	Net.request("harvest", {"k": free_k})
+	await _frames(2)
+	_check(Game.inv.count("turnip") > t0, "harvested turnips")
+	_check(Game.day() == 5, "day advanced to 5")
+	# placing & chests
+	var n0: int = Game.world["objects"].size()
+	var cp: Vector3 = lp.global_position + Vector3(3, 0, 3)
+	cp.y = z.ground_y(cp.x, cp.z)
+	Net.request("place_obj", {"item": "chest", "z": "over", "p": cp, "r": 0, "d": {}})
+	await _frames(3)
+	_check(Game.world["objects"].size() == n0 + 1, "placed a chest")
+	var oid := ""
+	for o in Game.world["objects"]:
+		if Vector3(Game.world["objects"][o]["p"]).distance_to(cp) < 0.1:
+			oid = o
+	_check(z.objs.has(oid), "chest node exists")
+	Game.inv.remove("stone", 2)
+	Net.request("chest_put", {"id": oid, "item": Items.make("stone", 2)})
+	await _frames(2)
+	_check(Game.world["objects"][oid]["d"]["items"].size() == 1, "chest holds stone")
+	Net.request("chest_take", {"id": oid, "idx": 0, "n": 2, "expect": "stone"})
+	await _frames(2)
+	_check(Game.world["objects"][oid]["d"]["items"].size() == 0, "took stone back")
+	# windows
+	var ui = Game.main.ui
+	var po = z.objs[oid]
+	for step in ["inv", "chest", "craft", "field", "pause", "cave", "ship"]:
+		match step:
+			"inv": ui.open_inventory()
+			"chest": ui.open_chest(po)
+			"craft": ui.open_craft("workbench", null)
+			"field": ui.open_craft("field", null)
+			"pause": ui.open_pause()
+			"cave": ui.open_cave_menu()
+			"ship": ui.open_shipping()
+		await _frames(4)
+		_check(ui.current != null, "window %s opened" % step)
+		ui.close()
+	Net.request("place_obj", {"item": "kettle", "z": "over", "p": cp + Vector3(2, 0, 0), "r": 0, "d": {}})
+	Net.request("place_obj", {"item": "furnace", "z": "over", "p": cp + Vector3(4, 0, 0), "r": 0, "d": {}})
+	await _frames(3)
+	for o in z.objs.values():
+		if o is PlacedObj and o.obj_type == "kettle":
+			lp.global_position = o.global_position + Vector3(1.2, 0, 0)
+			ui.open_kettle(o)
+			await _frames(3)
+			Game.inv.add(Items.make("mint", 3))
+			ui.current.add_ingredient(Game.inv.first_index("mint"))
+			ui.current.add_ingredient(Game.inv.first_index("mint"))
+			ui.current._brew()
+			await _frames(3)
+			_check(o.data().get("res", "") == "brew_zephyr_0", "brewed swiftfoot from mint (%s)" % o.data().get("res", ""))
+		if o is PlacedObj and o.obj_type == "furnace":
+			lp.global_position = o.global_position + Vector3(1.2, 0, 0)
+			ui.open_furnace(o)
+			await _frames(3)
+			ui.close()
+	ui.open_cook(null, false)
+	await _frames(3)
+	ui.close()
+	# travel
+	Zones.travel_local("home", null, "door")
+	await _frames(5)
+	_check(lp.zone_id == "home", "entered home zone")
+	Zones.travel_local("over", null, "door")
+	await _frames(5)
+	_log("DONE fails=%d" % _fails)
+	get_tree().quit()
+
+func _run_uishot(_a: Array) -> void:
+	_start_world()
+	await _frames(20)
+	var ui = Game.main.ui
+	var lp = Game.local_player
+	var z = Zones.get_zone("over")
+	for id in ["copper_ore", "iron_bar", "glowcap", "river_trout", "brew_lumen_1", "quartz", "honeycomb"]:
+		Game.inv.add(Items.make(id, 3))
+	Game.inv.add(Loot.equipment(3, RandomNumberGenerator.new()))
+	Game.inventory_changed.emit()
+	ui.open_inventory()
+	await _frames(10)
+	await _shot("ui_inventory")
+	ui.close()
+	var chest = null
+	for o in z.objs.values():
+		if o is PlacedObj and o.obj_type == "chest":
+			chest = o
+	lp.global_position = chest.global_position + Vector3(1.5, 0, 0)
+	ui.open_chest(chest)
+	await _frames(10)
+	await _shot("ui_chest")
+	ui.close()
+	ui.open_craft("workbench", null)
+	await _frames(10)
+	await _shot("ui_craft")
+	get_tree().quit()

@@ -141,6 +141,8 @@ func _process(delta: float) -> void:
 		_:
 			_cave(focus)
 	_seasonal_globals(delta)
+	var night := 1.0 - Game.daylight() if _profile == "surface" else (0.6 if _profile == "home" else 1.0)
+	RenderingServer.global_shader_parameter_set("night_amount", night)
 	if lp:
 		RenderingServer.global_shader_parameter_set("player_pos", lp.global_position)
 	_music_t += delta

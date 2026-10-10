@@ -460,7 +460,7 @@ func _a_kettle_brew(peer: int, a: Dictionary) -> void:
 	_set_data(a["id"], d)
 	var key := "recipe_" + res
 	if not Game.knows_recipe(res):
-		_ch({"t": "recipe", "id": res, "by": pname(peer)})
+		_ch({"t": "recipe", "id": res, "by": pname(peer), "ings": ings})
 		Net.tell(peer, "toast", {"text": "New brew discovered: %s!" % Items.def(res)["name"], "color": Color("c8ffb0")})
 		if res != "brew_murky":
 			chronicle("%s brewed the first %s." % [pname(peer), Items.def(res)["name"]], "brew")
@@ -538,6 +538,59 @@ func _a_coop_feed(_peer: int, a: Dictionary) -> void:
 	var d: Dictionary = o["d"].duplicate(true)
 	d["feed"] = int(d.get("feed", 0)) + int(a["n"])
 	_set_data(a["id"], d)
+
+# ------------------------------------------------------------------ shipping & knowledge
+
+func _a_ship_put(peer: int, a: Dictionary) -> void:
+	var it: Dictionary = a["item"]
+	if it.is_empty():
+		return
+	var arr: Array = Game.world["shipping"].duplicate(true)
+	var merged := false
+	for s in arr:
+		if Items.can_stack(s, it):
+			s["n"] = int(s["n"]) + int(it["n"])
+			merged = true
+			break
+	if not merged:
+		if arr.size() >= 60:
+			Net.grant(peer, [it], true)
+			return
+		arr.append(it)
+	_ch({"t": "shipping", "v": arr})
+	if not Game.is_known(it["id"]):
+		_ch({"t": "learn_item", "id": it["id"], "by": pname(peer)})
+
+func _a_ship_take(peer: int, a: Dictionary) -> void:
+	var arr: Array = Game.world["shipping"].duplicate(true)
+	var i := int(a["idx"])
+	if i < 0 or i >= arr.size():
+		return
+	var it: Dictionary = arr[i]
+	arr.remove_at(i)
+	_ch({"t": "shipping", "v": arr})
+	Net.grant(peer, [it], true)
+
+func _a_learn_recipe(peer: int, a: Dictionary) -> void:
+	var id: String = a["id"]
+	if Game.knows_recipe(id) or not Items.has(id):
+		return
+	_ch({"t": "recipe", "id": id, "by": a.get("by", pname(peer))})
+	chronicle("%s worked out how to make %s." % [pname(peer), Items.def(id)["name"]], "recipe")
+
+func _a_found_note(peer: int, a: Dictionary) -> void:
+	var i := int(a["i"])
+	if Game.world["know"]["notes"].has(i):
+		return
+	_ch({"t": "note", "v": i})
+
+func _a_waystone(peer: int, a: Dictionary) -> void:
+	var f := int(a["f"])
+	if Game.world["know"]["waystones"].has(f):
+		return
+	_ch({"t": "waystone", "v": f})
+	_toast("%s woke the waystone on floor %d. You can travel here from the cave mouth." % [pname(peer), f], Color("7fe3ff"))
+	chronicle("%s activated the waystone on floor %d." % [pname(peer), f], "cave")
 
 # ------------------------------------------------------------------ players
 

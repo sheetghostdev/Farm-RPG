@@ -473,7 +473,7 @@ func apply_change(ch: Dictionary) -> void:
 				ki2[ch["id"]]["known"] = true
 			toast.emit("Learned what %s is good for." % Items.def(ch["id"])["name"], Color("bfe3ff"))
 		"recipe":
-			world["know"]["recipes"][ch["id"]] = {"day": day(), "by": ch.get("by", "")}
+			world["know"]["recipes"][ch["id"]] = {"day": day(), "by": ch.get("by", ""), "ings": ch.get("ings", [])}
 		"fish":
 			world["know"]["fish"][ch["id"]] = ch["v"]
 		"place":

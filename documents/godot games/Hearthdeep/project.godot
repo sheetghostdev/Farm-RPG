@@ -94,6 +94,10 @@ season_tint={
 "type": "color",
 "value": Color(1, 1, 1, 0)
 }
+night_amount={
+"type": "float",
+"value": 0.0
+}
 cutaway_enabled={
 "type": "float",
 "value": 1.0

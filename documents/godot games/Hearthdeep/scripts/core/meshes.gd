@@ -36,6 +36,19 @@ float vnoise(vec2 p) {
 }
 """
 
+const SH_WINDOW := """
+shader_type spatial;
+render_mode diffuse_burley;
+global uniform float night_amount;
+void fragment() {
+	vec3 glass = vec3(0.22, 0.28, 0.34);
+	ALBEDO = mix(glass, COLOR.rgb * 0.6, 0.25 + 0.5 * night_amount);
+	ROUGHNESS = 0.15;
+	SPECULAR = 0.8;
+	EMISSION = COLOR.rgb * (0.15 + 1.6 * night_amount);
+}
+"""
+
 const SH_VC := """
 shader_type spatial;
 render_mode diffuse_burley;
@@ -280,7 +293,7 @@ func mat(nm: String) -> Material:
 		"glow_steady":
 			m = _sm(SH_GLOW, {"pulse": 0.0, "strength": 1.6})
 		"window":
-			m = _sm(SH_GLOW, {"pulse": 0.05, "strength": 1.1})
+			m = _sm(SH_WINDOW, {})
 		"foliage":
 			m = _sm(SH_FOLIAGE % [NOISE, CUTAWAY], {})
 		"foliage_ever":
