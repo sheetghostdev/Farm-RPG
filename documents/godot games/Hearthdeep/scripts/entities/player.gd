@@ -45,6 +45,7 @@ var selector: MeshInstance3D
 var ghost: MeshInstance3D
 var ghost_item := ""
 var place_rot := 0
+var _pad_mode := false
 var _action_name := ""
 var _action_count := 0
 var _step_t := 0.0
@@ -283,9 +284,12 @@ func _local_physics(delta: float) -> void:
 		spd *= 0.3
 	if fishing.active():
 		spd = 0.0
-	# aim
+	# aim: the mouse, or straight ahead when playing with a gamepad
 	if cam and not ui_block:
-		aim = cam.mouse_ground(global_position.y + 0.3)
+		if _pad_mode:
+			aim = global_position + Vector3(sin(facing), 0, cos(facing)) * 2.2
+		else:
+			aim = cam.mouse_ground(global_position.y + 0.3)
 	var hv := Vector3.ZERO
 	if roll_t >= 0.0:
 		roll_t += delta / _roll_time()
@@ -348,6 +352,14 @@ func _local_physics(delta: float) -> void:
 			pending_hit = {}
 			_resolve_use(ph)
 	_regen(delta, z)
+
+func _input(e: InputEvent) -> void:
+	if not is_local:
+		return
+	if e is InputEventJoypadButton or (e is InputEventJoypadMotion and abs((e as InputEventJoypadMotion).axis_value) > 0.4):
+		_pad_mode = true
+	elif e is InputEventMouseMotion and (e as InputEventMouseMotion).relative.length() > 2.0:
+		_pad_mode = false
 
 func _roll_time() -> float:
 	return 0.45 if Game.has_trait("featherstep") else 0.36

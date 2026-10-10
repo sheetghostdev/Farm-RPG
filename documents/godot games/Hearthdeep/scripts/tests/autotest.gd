@@ -468,14 +468,15 @@ func _run_cave(a: Array) -> void:
 	# mine some ore
 	var ore = null
 	for o in z2.objs.values():
-		if o is ResourceNode and o.sub.begins_with("ore_"):
+		if is_instance_valid(o) and o is ResourceNode and o.sub.begins_with("ore_"):
 			ore = o
 			break
 	if ore:
 		var before := Game.inv.counts()
+		var ore_sub: String = ore.sub
 		ore.tool_hit(lp, "pick", 4, 100.0)
 		await _frames(4)
-		_check(Game.inv.counts() != before, "mined %s" % ore.sub)
+		_check(Game.inv.counts() != before, "mined %s" % ore_sub)
 	_log("DONE fails=%d" % _fails)
 	get_tree().quit()
 
@@ -591,6 +592,20 @@ func _run_home(_a: Array) -> void:
 	await _frames(5)
 	_check(ui.current is CookWindow, "hearth opens cooking")
 	ui.close()
+	# furnish: place a bookshelf through the player's own placement path
+	lp.global_position = home.spawn_point("") + Vector3(-1.5, 0, 0)
+	Game.inv.set_slot(0, Items.make("bookshelf", 1))
+	lp.select_hot(0)
+	lp.aim = lp.global_position + Vector3(-2.0, 0, -1.0)
+	var bpos: Vector3 = lp.place_position("bookshelf")
+	_check(lp.can_place("bookshelf", bpos), "bookshelf can go indoors")
+	var n_before: int = home.objs.size()
+	lp._place(Game.inv.get_slot(0))
+	await _frames(5)
+	_check(home.objs.size() == n_before + 1, "bookshelf placed in the farmhouse")
+	Game.inv.set_slot(0, Items.make("scarecrow", 1))
+	_check(not lp.can_place("scarecrow", bpos + Vector3(0, 0, 2)), "outdoor-only things stay outside")
+	Game.inv.set_slot(0, Items.make("hoe_0"))
 	Game.chronicle("A line written by hand.", "note")
 	await _frames(3)
 	for t in JournalWindow.TABS:

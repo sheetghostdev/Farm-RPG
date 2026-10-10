@@ -174,6 +174,9 @@ renders model sheets.
 
 ## Known limits
 
+* A gamepad covers walking, fighting, gathering, fishing and the hotbar. With a
+  pad you aim the way you're facing. Windows such as the pack, shops and the
+  journal still need the mouse.
 * Online play is plain ENet with no NAT punch-through. The host may need to
   forward UDP port 24565.
 * Saves are text files in the user data folder (`user://worlds`). They are
