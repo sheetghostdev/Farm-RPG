@@ -650,3 +650,158 @@ func _run_home(_a: Array) -> void:
 	ui.close()
 	_log("DONE fails=%d" % _fails)
 	get_tree().quit()
+
+## Title screen panels, then a full save -> quit to title -> load round trip.
+func _run_menu(_a: Array) -> void:
+	var menu: MainMenu = Game.main.menu
+	Game.profile["name"] = "Tester"
+	DirAccess.make_dir_recursive_absolute("user://worlds")
+	DirAccess.remove_absolute("user://worlds/roundtrip.hearth")
+	DirAccess.remove_absolute("user://worlds/roundtrip.hearth.meta")
+	menu.open()
+	await _frames(20)
+	await _shot("menu_title")
+	menu._show_new()
+	await _frames(5)
+	await _shot("menu_new")
+	menu._show_character()
+	await _frames(20)
+	await _shot("menu_character")
+	menu._show_join()
+	await _frames(5)
+	# start a world through the same call the Begin button makes
+	var err: String = Game.main.start_new_world("Roundtrip", 4242, {"season_len": 7, "loss": 0}, false, 0)
+	_check(err == "", "new world started")
+	await _frames(20)
+	_check(not menu.visible and Game.running, "menu hidden once playing")
+	var lp = Game.local_player
+	Net.server.add_money(1234, "")
+	Game.chronicle("We were here.", "note")
+	Game.local_grant([Items.make("quartz", 7)], true)
+	Net.request("map_pin", {"op": "add", "z": "over", "p": Vector2(50, 50), "c": Color.RED})
+	Net.server.start_new_day()
+	await _frames(10)
+	var day_before := Game.day()
+	var money_before := Game.money()
+	var objs_before: int = Game.world["objects"].size()
+	var chron_before: int = Game.world["chronicle"].size()
+	lp.global_position += Vector3(3, 0, 2)
+	await _frames(5)
+	var pos_before: Vector3 = lp.global_position
+	Game.main.leave_world()
+	await _frames(10)
+	_check(menu.visible and not Game.running, "back at the title")
+	_check(FileAccess.file_exists("user://worlds/roundtrip.hearth") and FileAccess.file_exists("user://worlds/roundtrip.hearth.meta"), "save and meta written")
+	var saves := MainMenu.list_saves()
+	_check(not saves.is_empty() and saves[0]["name"] == "Roundtrip", "save listed first (%s)" % (saves[0]["name"] if not saves.is_empty() else "-"))
+	await _frames(5)
+	await _shot("menu_continue")
+	menu._show_load()
+	await _frames(5)
+	await _shot("menu_load")
+	err = Game.main.load_world(saves[0]["path"], false, 0)
+	_check(err == "", "world loaded")
+	await _frames(30)
+	lp = Game.local_player
+	_check(Game.day() == day_before, "day kept (%d)" % Game.day())
+	_check(Game.money() == money_before, "money kept (%d)" % Game.money())
+	_check(Game.world["objects"].size() == objs_before, "objects kept")
+	_check(Game.world["chronicle"].size() == chron_before, "chronicle kept (%d vs %d)" % [Game.world["chronicle"].size(), chron_before])
+	_check(Game.inv.count("quartz") == 7, "pack kept (quartz %d)" % Game.inv.count("quartz"))
+	_check(Game.world["know"].get("pins", []).size() == 1, "map pin kept")
+	_check(lp.global_position.distance_to(pos_before) < 1.0, "position kept (%.1f m away)" % lp.global_position.distance_to(pos_before))
+	_check(int(Game.world["settings"]["season_len"]) == 7, "settings kept")
+	_check(Game.world["explored"] is PackedByteArray and Game.world["explored"].size() > 0, "explored map kept")
+	_log("DONE fails=%d" % _fails)
+	get_tree().quit()
+
+# ------------------------------------------------------------------ multiplayer (two processes)
+
+func _wait_until(cond: Callable, secs: float) -> bool:
+	var t0 := Time.get_ticks_msec()
+	while not cond.call():
+		if Time.get_ticks_msec() - t0 > secs * 1000.0:
+			return false
+		await get_tree().process_frame
+	return true
+
+func _chron_has(text: String) -> bool:
+	for e in Game.world.get("chronicle", []):
+		if String(e.get("s", "")).contains(text):
+			return true
+	return false
+
+func _run_mphost(a: Array) -> void:
+	var port := int(a[0]) if a.size() > 0 else 24601
+	Game.profile["name"] = "Host"
+	var err: String = Game.main.start_new_world("MP Test", 777, {}, true, port)
+	_check(err == "", "hosting on %d (%s)" % [port, err])
+	_check(Net.is_online() and Net.is_server(), "online as server")
+	var ok: bool = await _wait_until(func(): return Net.peers.size() >= 2, 40.0)
+	_check(ok, "a friend joined (%d peers)" % Net.peers.size())
+	var cid := 0
+	for id in Net.peers:
+		if id != Net.my_id():
+			cid = id
+	ok = await _wait_until(func(): return _chron_has("hello from the guest"), 20.0)
+	_check(ok, "guest's request reached the host")
+	ok = await _wait_until(func(): return Zones.players.has(cid), 10.0)
+	_check(ok, "guest avatar spawned on host")
+	var rp = Zones.players.get(cid)
+	var p0: Vector3 = rp.global_position if rp else Vector3.ZERO
+	Net.server.add_money(1000, "")
+	ok = await _wait_until(func(): return rp != null and is_instance_valid(rp) and rp.global_position.distance_to(p0) > 3.0, 20.0)
+	_check(ok, "guest movement synced to host")
+	ok = await _wait_until(func(): return Zones.get_zone("cave_1") != null, 20.0)
+	_check(ok, "host simulates the cave floor the guest went down to")
+	ok = await _wait_until(func(): return _chron_has("guest is done"), 30.0)
+	_check(ok, "guest finished")
+	var guest_saved: Dictionary = Game.world["players"].get("Guest", {})
+	ok = await _wait_until(func(): return Game.world["players"].get("Guest", {}).get("zone", "") == "cave_1", 10.0)
+	_check(ok, "guest character data kept on host (zone %s)" % Game.world["players"].get("Guest", {}).get("zone", "?"))
+	_log("DONE fails=%d" % _fails)
+	await _frames(30)
+	get_tree().quit()
+
+func _run_mpclient(a: Array) -> void:
+	var port := int(a[0]) if a.size() > 0 else 24601
+	Game.profile["name"] = "Guest"
+	await get_tree().create_timer(5.0).timeout
+	var err: String = Net.join("127.0.0.1", port)
+	_check(err == "", "connecting")
+	var ok: bool = await _wait_until(func(): return Game.running, 30.0)
+	_check(ok, "joined the host's world")
+	if not ok:
+		_log("DONE fails=%d" % _fails)
+		get_tree().quit()
+		return
+	_check(int(Game.world.get("seed", 0)) == 777, "same world seed")
+	_check(not Net.is_server(), "running as a client")
+	ok = await _wait_until(func(): return Zones.players.size() >= 2, 10.0)
+	_check(ok, "can see the host")
+	Game.chronicle("hello from the guest")
+	ok = await _wait_until(func(): return Game.money() >= 1500, 20.0)
+	_check(ok, "shared purse updated from host (%d)" % Game.money())
+	var lp = Game.local_player
+	var over = Zones.get_zone("over")
+	var tgt: Vector3 = over.spawn_point("") + Vector3(6, 0, 4)
+	lp.global_position = Vector3(tgt.x, over.ground_y(tgt.x, tgt.z) + 0.3, tgt.z)
+	await get_tree().create_timer(1.5).timeout
+	# a server-validated action: till a farm tile
+	var g = over.gen
+	var k := Vector2i(int(g.farm_rect.get_center().x) + 6, int(g.farm_rect.get_center().y) + 12)
+	Net.request("till", {"tiles": [k]})
+	ok = await _wait_until(func(): return Game.world["farm"]["tiles"].has(k), 10.0)
+	_check(ok, "tilled tile synced back")
+	Zones.travel_local("cave_1", null, "up")
+	ok = await _wait_until(func():
+		for e in Zones.enemies.values():
+			if is_instance_valid(e) and e.zone_id == "cave_1":
+				return true
+		return false, 20.0)
+	_check(ok, "creatures from the host appear in the cave")
+	Net.push_my_data()
+	Game.chronicle("the guest is done")
+	await get_tree().create_timer(2.0).timeout
+	_log("DONE fails=%d" % _fails)
+	get_tree().quit()

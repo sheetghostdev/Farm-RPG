@@ -30,6 +30,7 @@ func _ready() -> void:
 	hud.attach_tooltip(ui.top)
 	menu = MainMenu.new()
 	add_child(menu)
+	MainMenu.apply_saved_volumes()
 	Game.day_started.connect(_on_day_started)
 	Net.connect_failed.connect(func(r): menu.show_error(r); menu.visible = true)
 	if Game.autotest != "":
@@ -168,6 +169,10 @@ func save_world() -> void:
 	var f := FileAccess.open(save_path, FileAccess.WRITE)
 	if f:
 		f.store_string(var_to_str(Game.world))
+	var mf := FileAccess.open(save_path + ".meta", FileAccess.WRITE)
+	if mf:
+		mf.store_string(var_to_str({"name": Game.world.get("name", "World"), "date": Game.date_text(), "day": Game.day(),
+			"players": Game.world.get("players", {}).keys(), "saved_at": Game.world["saved_at"], "seed": Game.world.get("seed", 0)}))
 
 func autosave() -> void:
 	save_world()

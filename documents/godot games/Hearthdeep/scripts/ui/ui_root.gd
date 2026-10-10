@@ -246,15 +246,18 @@ func open_settings() -> void:
 		sl.step = 0.05
 		sl.custom_minimum_size = Vector2(240, 24)
 		var idx := AudioServer.get_bus_index(bus)
-		sl.value = db_to_linear(AudioServer.get_bus_volume_db(idx)) if idx >= 0 else 1.0
+		sl.value = float(Game.profile.get("vol", {}).get(bus, 1.0)) if idx >= 0 else 1.0
 		var b: String = bus
-		sl.value_changed.connect(func(v): Sfx.set_bus_volume(b, v))
+		sl.value_changed.connect(func(v):
+			Sfx.set_bus_volume(b, v)
+			if not Game.profile.has("vol"):
+				Game.profile["vol"] = {}
+			Game.profile["vol"][b] = v
+			Game.save_profile())
 		row.add_child(sl)
 		w.content.add_child(row)
-	var fs := CheckButton.new()
-	fs.text = "Fullscreen"
-	fs.button_pressed = DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
-	fs.toggled.connect(func(on): DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if on else DisplayServer.WINDOW_MODE_WINDOWED))
+	var fs := MainMenu.toggle("Fullscreen", DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN, func(on):
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if on else DisplayServer.WINDOW_MODE_WINDOWED))
 	w.content.add_child(fs)
 	show_win(w)
 
