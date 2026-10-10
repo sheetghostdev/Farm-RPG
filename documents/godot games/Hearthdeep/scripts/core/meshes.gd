@@ -49,6 +49,32 @@ void fragment() {
 }
 """
 
+const SH_TELEGRAPH := """
+shader_type spatial;
+render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, depth_test_disabled;
+uniform vec4 col : source_color = vec4(1.0, 0.35, 0.2, 0.6);
+uniform float prog = 0.0;
+uniform float shape = 0.0;
+varying vec3 lp;
+void vertex() { lp = VERTEX; }
+void fragment() {
+	float edge;
+	float fill;
+	if (shape < 0.5) {
+		float d = length(lp.xz);
+		edge = smoothstep(0.86, 0.97, d) * (1.0 - smoothstep(0.98, 1.0, d));
+		fill = 1.0 - smoothstep(prog - 0.03, prog, d);
+	} else {
+		vec2 q = abs(lp.xz) * 2.0;
+		float m = max(q.x, q.y * 1.0);
+		edge = smoothstep(0.86, 0.96, q.x) + smoothstep(0.97, 0.995, q.y);
+		fill = 1.0 - smoothstep(prog - 0.02, prog, lp.z + 0.5);
+	}
+	ALBEDO = col.rgb * (1.0 + edge * 0.6);
+	ALPHA = clamp(col.a * (0.18 + edge * 0.8 + fill * 0.32), 0.0, 1.0);
+}
+"""
+
 const SH_VC := """
 shader_type spatial;
 render_mode diffuse_burley;
@@ -347,14 +373,7 @@ func mat(nm: String) -> Material:
 			u.cull_mode = BaseMaterial3D.CULL_DISABLED
 			m = u
 		"telegraph":
-			var tg := StandardMaterial3D.new()
-			tg.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-			tg.albedo_color = Color(1.0, 0.25, 0.15, 0.35)
-			tg.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			tg.cull_mode = BaseMaterial3D.CULL_DISABLED
-			tg.no_depth_test = true
-			tg.render_priority = 2
-			m = tg
+			m = _sm(SH_TELEGRAPH, {})
 		"select":
 			var sel := StandardMaterial3D.new()
 			sel.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED

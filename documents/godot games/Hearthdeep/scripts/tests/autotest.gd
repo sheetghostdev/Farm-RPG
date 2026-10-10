@@ -475,3 +475,81 @@ func _run_cave(a: Array) -> void:
 		_check(Game.inv.counts() != before, "mined %s" % ore.sub)
 	_log("DONE fails=%d" % _fails)
 	get_tree().quit()
+
+## Stand near creatures and photograph them winding up: --autotest=fight:<floor>
+func _run_fight(a: Array) -> void:
+	_start_world(12345)
+	await _frames(5)
+	var f := int(a[0]) if a.size() > 0 else 4
+	Zones.travel_local("cave_%d" % f, null, "up")
+	await _frames(5)
+	var lp = Game.local_player
+	var z: CaveFloor = Zones.get_zone("cave_%d" % f)
+	var shots := 0
+	var seen := {}
+	for e in Zones.enemies.values():
+		if e.zone_id != z.zone_id or seen.has(e.etype):
+			continue
+		seen[e.etype] = true
+		lp.global_position = e.global_position + Vector3(3.5, 0, 2.0)
+		lp.hp = 999.0
+		Game.main.cam.snap()
+		for i in 120:
+			await get_tree().physics_frame
+			if e.state in [Enemy.S.WINDUP, Enemy.S.EMERGE]:
+				break
+		await _frames(2)
+		await _shot("fight_%d_%s" % [f, e.etype])
+		shots += 1
+		if shots >= 3:
+			break
+	_log("DONE")
+	get_tree().quit()
+
+## Fishing end to end without input: --autotest=fish
+func _run_fish(_a: Array) -> void:
+	_start_world(12345)
+	await _frames(5)
+	var lp = Game.local_player
+	var z = Zones.get_zone("over")
+	var g = z.gen
+	var lake: Dictionary = g.ponds[0]
+	var c: Vector2 = lake["c"]
+	var r: float = lake["r"]
+	lp.global_position = Vector3(c.x + r + 2.0, g.h_at(c.x + r + 2.0, c.y) + 0.5, c.y)
+	lp.facing = -PI / 2.0
+	lp.select_hot(5)
+	await _frames(3)
+	var f: Fishing = lp.fishing
+	f.on_use_pressed()
+	for i in 70:
+		await get_tree().process_frame
+	lp.aim = lp.global_position + Vector3(-6, 0, 0)
+	f.on_use_released()
+	for i in 90:
+		await get_tree().process_frame
+		if f.state == Fishing.F.WAIT:
+			f.bite_at = 9999.0
+			break
+	_check(f.state in [Fishing.F.WAIT, Fishing.F.BITE], "bobber landed in water (state %d)" % f.state)
+	f.bite_at = f.t + 0.1
+	for i in 30:
+		await get_tree().process_frame
+		if f.state == Fishing.F.BITE:
+			break
+	_check(f.state == Fishing.F.BITE, "fish bit")
+	f.on_use_pressed()
+	if f.game:
+		f.game.progress = 0.75
+		f.game.has_treasure = true
+		f.game.treasure_y = 200.0
+		await _frames(4)
+		await _shot("fishing_game")
+		if f.game:
+			f.game.progress = 1.0
+		await _frames(5)
+	await _frames(5)
+	_check(Game.world["know"]["fish"].size() > 0 or Game.inv.count("old_boot") + Game.inv.count("driftwood") + Game.inv.count("river_weed") + Game.inv.count("soggy_letter") > 0, "caught something (%s)" % f.fish_id)
+	_log("fish log: %s" % str(Game.world["know"]["fish"]))
+	_log("DONE fails=%d" % _fails)
+	get_tree().quit()

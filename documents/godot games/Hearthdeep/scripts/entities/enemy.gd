@@ -880,11 +880,12 @@ func _update_telegraph() -> void:
 				pass
 	telegraph.visible = show and not dead
 	if show:
-		var m: StandardMaterial3D = telegraph.material_override
+		var m: ShaderMaterial = telegraph.material_override
 		if m:
-			m.albedo_color = Color(1.0, 0.3 + 0.3 * (1.0 - prog), 0.15, 0.2 + 0.35 * clamp(prog, 0.0, 1.0))
+			m.set_shader_parameter("prog", clamp(prog, 0.0, 1.0))
+			m.set_shader_parameter("col", Color(1.0, 0.25 + 0.35 * (1.0 - prog), 0.15, 0.75))
 
-func _tele_mat() -> StandardMaterial3D:
+func _tele_mat() -> ShaderMaterial:
 	if telegraph.material_override == null:
 		telegraph.material_override = Meshes.mat("telegraph").duplicate()
 	return telegraph.material_override
@@ -900,6 +901,7 @@ func _tele_circle(r: float, at = null) -> void:
 		telegraph.mesh = cm
 	telegraph.global_position = (at if at != null else global_position) + Vector3(0, 0.06, 0)
 	telegraph.scale = Vector3(r, 1.0, r)
+	telegraph.material_override.set_shader_parameter("shape", 0.0)
 	telegraph.rotation = Vector3.ZERO
 
 func _tele_rect(fwd: Vector3, length: float, width: float) -> void:
@@ -911,3 +913,4 @@ func _tele_rect(fwd: Vector3, length: float, width: float) -> void:
 	telegraph.global_position = global_position + fwd * (length / 2.0) + Vector3(0, 0.06, 0)
 	telegraph.rotation = Vector3(0, rotation.y, 0)
 	telegraph.scale = Vector3(width, 1.0, length)
+	telegraph.material_override.set_shader_parameter("shape", 1.0)

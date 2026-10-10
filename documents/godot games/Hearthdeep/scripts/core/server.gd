@@ -549,6 +549,58 @@ func _a_coop_feed(_peer: int, a: Dictionary) -> void:
 	d["feed"] = int(d.get("feed", 0)) + int(a["n"])
 	_set_data(a["id"], d)
 
+# ------------------------------------------------------------------ fishing
+
+func _a_catch_fish(peer: int, a: Dictionary) -> void:
+	var id: String = a["id"]
+	if not Items.has(id):
+		return
+	var items: Array = [Items.make(id)]
+	var who: String = a.get("by", pname(peer))
+	if Items.cat_of(id) == "fish":
+		var size := int(a.get("size", 0))
+		var rec: Dictionary = Game.world["know"]["fish"].get(id, {}).duplicate(true)
+		var first := rec.is_empty()
+		if first:
+			rec = {"n": 0, "best": 0, "by": who, "day": Game.day(), "where": a.get("z", "")}
+		rec["n"] = int(rec["n"]) + 1
+		var record := size > int(rec.get("best", 0)) and not first
+		if size > int(rec.get("best", 0)):
+			rec["best"] = size
+			rec["best_by"] = who
+		_ch({"t": "fish", "id": id, "v": rec})
+		if first:
+			var where: String = a.get("z", "")
+			var place := "in the caves on floor %d" % Zones.floor_of(where) if where.begins_with("cave_") else ""
+			chronicle("%s caught the group's first %s%s (%d cm)." % [who, Items.def(id)["name"], (" " + place) if place != "" else "", size], "fish")
+			_toast("New fish: %s!" % Items.def(id)["name"], Color("bfe3ff"))
+			_ch({"t": "learn_item", "id": id, "by": who})
+		elif record and size >= 40:
+			Net.tell(peer, "toast", {"text": "A new record %s: %d cm!" % [Items.def(id)["name"], size], "color": Color("ffd36b")})
+		if Items.fish[id].get("legend", false):
+			chronicle("%s landed a legendary %s. Nobody believes it until they see it." % [who, Items.def(id)["name"]], "fish")
+	if a.get("treasure", false):
+		var depth := Zones.floor_of(a.get("z", ""))
+		var t := Loot.roll("chest_wood" if depth < 10 else "chest_iron", depth, rng)
+		if rng.randf() < 0.12:
+			t.append(Loot.equipment(Loot.tier_for_depth(max(depth, 4)), rng))
+		if rng.randf() < 0.25:
+			t.append(Items.make(["old_locket", "ancient_coin", "rusty_key", "star_map"][rng.randi() % 4]))
+		var money := 0
+		for it in t:
+			if it["id"] == "$money":
+				money += int(it["n"])
+			else:
+				items.append(it)
+		if money > 0:
+			add_money(money, "treasure")
+		Net.tell(peer, "toast", {"text": "You pulled up a treasure chest!", "color": Color("ffd36b")})
+		if rng.randf() < 0.3:
+			chronicle("%s fished a treasure chest out of %s." % [who, "the deep" if str(a.get("z", "")).begins_with("cave") else "the water"], "find")
+	if id == "soggy_letter":
+		Net.tell(peer, "note", {"i": Lore.surface_note(rng.randi())})
+	Net.grant(peer, items)
+
 # ------------------------------------------------------------------ shipping & knowledge
 
 func _a_ship_put(peer: int, a: Dictionary) -> void:
