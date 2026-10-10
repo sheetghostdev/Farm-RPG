@@ -61,7 +61,30 @@ func build() -> void:
 	built = true
 
 func display_name() -> String:
-	return "the valley"
+	return "The Valley"
+
+## A friendly name for wherever this point is: the farm, town, or a known landmark.
+func area_name(p: Vector3) -> String:
+	var q := Vector2(p.x, p.z)
+	if gen.farm_rect.grow(2.0).has_point(q):
+		return "Home Farm"
+	if gen.town_rect.grow(4.0).has_point(q):
+		return TownGen.town_name()
+	if q.distance_to(gen.cave_pos) < 14.0:
+		return "The Cave Mouth"
+	var best := ""
+	var bd := 1e9
+	for poi in gen.pois:
+		var nm: String = poi.get("name", "")
+		if nm == "" or not Game.world["know"]["places"].has(poi["id"]):
+			continue
+		var d: float = q.distance_to(poi["pos"])
+		if d < float(poi["r"]) and d < bd:
+			bd = d
+			best = nm
+	if best != "":
+		return best[0].to_upper() + best.substr(1)
+	return "The Valley"
 
 func ground_y(x: float, z: float) -> float:
 	return gen.h_at(x, z)

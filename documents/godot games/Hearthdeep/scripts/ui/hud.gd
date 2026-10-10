@@ -24,6 +24,7 @@ var sleep_l: Label
 var tooltip: PanelContainer
 var tooltip_rt: RichTextLabel
 var minimap: Minimap
+var tips: Tips
 var _party_t := 0.0
 var _note_items := {}
 
@@ -148,6 +149,9 @@ func _build_misc() -> void:
 	sleep_l.position = Vector2(-400, 60)
 	sleep_l.size = Vector2(800, 40)
 	root.add_child(sleep_l)
+	tips = Tips.new()
+	tips.position = Vector2(16, 330)
+	root.add_child(tips)
 	minimap = Minimap.new()
 	minimap.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	minimap.position = Vector2(-216, 14)
@@ -228,6 +232,9 @@ func _process(delta: float) -> void:
 	_party_t += delta
 	if _party_t > 0.5:
 		_party_t = 0.0
+		var z = lp.zone() if lp else null
+		if z is Overworld:
+			zone_l.text = z.area_name(lp.global_position)
 		_refresh_party()
 		_refresh_buffs()
 

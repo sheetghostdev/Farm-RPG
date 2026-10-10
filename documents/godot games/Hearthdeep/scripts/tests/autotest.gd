@@ -805,3 +805,11 @@ func _run_mpclient(a: Array) -> void:
 	await get_tree().create_timer(2.0).timeout
 	_log("DONE fails=%d" % _fails)
 	get_tree().quit()
+
+func _run_tipshot(_a: Array) -> void:
+	_start_world()
+	await _frames(20)
+	Game.main.hud.tips._queue = ["welcome"]
+	await get_tree().create_timer(1.0).timeout
+	await _shot("tip")
+	get_tree().quit()
