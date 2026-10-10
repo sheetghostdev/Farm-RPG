@@ -904,7 +904,22 @@ func _tele_circle(r: float, at = null) -> void:
 	telegraph.material_override.set_shader_parameter("shape", 0.0)
 	telegraph.rotation = Vector3.ZERO
 
+## How far an attack along fwd can actually travel before a wall (or, for
+## walkers, water and chasms) stops it, so the marking never lies.
+func _clip_len(fwd: Vector3, length: float) -> float:
+	var z = zone
+	if z == null or not z.has_method("can_stand"):
+		return length
+	var walls_only: bool = st.get("fly", false) or etype in ["golem", "sentinel"]
+	var d := 0.6
+	while d < length:
+		if not z.can_stand(global_position + fwd * d, walls_only):
+			return max(d, 1.0)
+		d += 0.5
+	return length
+
 func _tele_rect(fwd: Vector3, length: float, width: float) -> void:
+	length = _clip_len(fwd, length)
 	_tele_mat()
 	if not (telegraph.mesh is BoxMesh):
 		var bm := BoxMesh.new()
