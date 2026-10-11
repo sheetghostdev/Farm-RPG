@@ -34,7 +34,19 @@ func overworld_gen() -> OverworldGen:
 			ex.resize(OverworldGen.EX_W * OverworldGen.EX_W)
 			ex.fill(0)
 			Game.world["explored"] = ex
+		mark_valley_explored()
 	return _gen
+
+## You know your own valley; only the wilds start out unexplored.
+func mark_valley_explored() -> void:
+	if _gen == null:
+		return
+	var ex: PackedByteArray = Game.world.get("explored", PackedByteArray())
+	if ex.size() != OverworldGen.EX_W * OverworldGen.EX_W:
+		return
+	for c in _gen.core_explored_cells():
+		ex[c] = 1
+	Game.world["explored"] = ex
 
 static func origin_for(zid: String) -> Vector3:
 	if zid == "over":

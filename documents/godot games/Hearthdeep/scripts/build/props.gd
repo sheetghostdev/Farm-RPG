@@ -76,6 +76,11 @@ static func build(key: String, v: int) -> Mesh:
 		"scaffold": _scaffold(mb, v)
 		"flower_bed": _flower_bed(mb, v)
 		"bunting": _bunting(mb, v)
+		"soil_bed": _soil_bed(mb, v)
+		"stone_wall": _stone_wall(mb, v)
+		"hedge": _hedge(mb, v)
+		"gate_arch": _gate_arch(mb, v)
+		"wayboard": _wayboard(mb, v)
 		_:
 			mb.box(Vector3(0, 0.5, 0), Vector3.ONE, Color.MAGENTA)
 	return mb.commit()
@@ -752,3 +757,51 @@ static func _bunting(mb: MeshBuilder, v: int) -> void:
 		var sag := sin(PI * i / 12.0) * 0.6
 		mb.tri(Vector3(x, -sag, 0), Vector3(x + 0.6, -sag, 0), Vector3(x + 0.3, -sag - 0.5, 0), cols[i % cols.size()])
 		mb.tri(Vector3(x + 0.6, -sag, 0), Vector3(x, -sag, 0), Vector3(x + 0.3, -sag - 0.5, 0), cols[i % cols.size()])
+
+static func _soil_bed(mb: MeshBuilder, v: int) -> void:
+	mb.box(Vector3(0, 0.1, 0), Vector3(2.0, 0.2, 0.9), WOOD_DARK)
+	mb.box(Vector3(0, 0.19, 0), Vector3(1.85, 0.04, 0.78), Color("5a3e26"))
+
+## A 4 m run of dry-stone wall (variants vary the stones), running along X.
+static func _stone_wall(mb: MeshBuilder, v: int) -> void:
+	var x := -2.0
+	while x < 2.0:
+		var w := mb.rng.randf_range(0.45, 0.8)
+		var h := mb.rng.randf_range(1.0, 1.3)
+		var c: Color = STONE.lerp(Color("a8a090"), mb.rng.randf()).lerp(Color("7a766e"), mb.rng.randf() * 0.4)
+		mb.box(Vector3(x + w / 2.0, h / 2.0, mb.rng.randf_range(-0.05, 0.05)), Vector3(w - 0.04, h, 0.75), c)
+		x += w
+	mb.box(Vector3(0, 1.32, 0), Vector3(4.0, 0.14, 0.85), STONE_DARK)
+	if v % 2 == 0:
+		mb.surface("plant")
+		mb.blob(Vector3(mb.rng.randf_range(-1.4, 1.4), 1.35, 0.1), Vector3(0.5, 0.2, 0.35), Color("4f8a3a"), 0.3, 1)
+		mb.surface("vc")
+
+## A 4 m run of hedgerow along X.
+static func _hedge(mb: MeshBuilder, v: int) -> void:
+	mb.surface("plant")
+	for i in 4:
+		mb.blob(Vector3(-1.5 + i, 0.75, mb.rng.randf_range(-0.1, 0.1)), Vector3(0.75, 0.8, 0.55), LEAF.darkened(mb.rng.randf_range(0.0, 0.2)), 0.2, 1)
+	mb.surface("vc")
+	for i in 3:
+		mb.sphere(Vector3(mb.rng.randf_range(-1.8, 1.8), mb.rng.randf_range(0.8, 1.4), 0.5), Vector3.ONE * 0.07, Color("f4f2ea"), 2, 4)
+
+## A timber arch over a path, crossbeam along X.
+static func _gate_arch(mb: MeshBuilder, v: int) -> void:
+	for s in [-1.0, 1.0]:
+		mb.box(Vector3(s * 1.8, 1.4, 0), Vector3(0.28, 2.8, 0.28), WOOD_DARK)
+		mb.box(Vector3(s * 1.8, 0.1, 0), Vector3(0.6, 0.2, 0.6), STONE)
+	mb.box(Vector3(0, 2.85, 0), Vector3(4.3, 0.26, 0.36), WOOD_DARK)
+	mb.box(Vector3(0, 2.5, 0), Vector3(2.4, 0.42, 0.08), PLANK)
+	mb.surface("plant")
+	for s in [-1.0, 1.0]:
+		mb.blob(Vector3(s * 1.8, 2.7, 0.2), Vector3(0.45, 0.35, 0.3), LEAF, 0.3, 1)
+	mb.surface("vc")
+
+## A signboard on two posts naming the place beyond.
+static func _wayboard(mb: MeshBuilder, v: int) -> void:
+	for s in [-1.0, 1.0]:
+		mb.cyl(Vector3(s * 0.55, 0, 0), 0.06, 0.05, 1.6, 5, WOOD_DARK)
+	mb.box(Vector3(0, 1.25, 0), Vector3(1.4, 0.5, 0.07), PLANK)
+	mb.box(Vector3(0, 1.25, 0.04), Vector3(1.2, 0.34, 0.02), PLANK.darkened(0.2))
+	mb.box(Vector3(0.75, 1.25, 0.0), Vector3(0.25, 0.25, 0.07), PLANK, Vector3(0, 0, PI / 4))

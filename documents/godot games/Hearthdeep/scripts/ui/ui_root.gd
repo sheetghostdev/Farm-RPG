@@ -276,10 +276,20 @@ func show_note(i: int) -> void:
 	Net.request("found_note", {"i": i})
 
 func open_cave_menu(from_waystone: bool = false) -> void:
-	var w := UIWin.new("The Caves", Vector2(420, 200))
+	var w := UIWin.new("The Caves", Vector2(460, 220))
 	w.kind = "cave"
 	var deepest := int(Game.world["know"].get("deepest", 0))
 	w.content.add_child(UITheme.label("Deepest floor reached: %d" % deepest if deepest > 0 else "Nobody has gone down yet.", 16, UITheme.TEXT_DIM))
+	var ret: Dictionary = Game.me.get("cave_return", {})
+	if not ret.is_empty() and not from_waystone:
+		var rb := UITheme.button("Back to where you left off (floor %d)" % int(ret["f"]), func():
+			close()
+			Game.main.use_cave_return(), 17)
+		w.content.add_child(rb)
+	if deepest > 1:
+		w.content.add_child(UITheme.button("Straight down to the deepest floor (%d)" % deepest, func():
+			close()
+			Game.main.travel_to_floor(deepest), 17))
 	var g := GridContainer.new()
 	g.columns = 4
 	w.content.add_child(g)
@@ -291,6 +301,8 @@ func open_cave_menu(from_waystone: bool = false) -> void:
 	stones.sort()
 	for f in stones:
 		var fl: int = f
+		if fl == deepest:
+			continue
 		g.add_child(UITheme.button("Floor %d" % fl, func():
 			close()
 			Game.main.travel_to_floor(fl), 16))
@@ -298,7 +310,7 @@ func open_cave_menu(from_waystone: bool = false) -> void:
 		w.content.add_child(UITheme.button("Return to the surface", func():
 			close()
 			Game.main.escape_to_surface(), 16))
-	w.content.add_child(UITheme.label("Activate waystones (every 5 floors) to travel back to them.", 13, UITheme.TEXT_DIM))
+	w.content.add_child(UITheme.label("Waystones you attune also show up here. A Homeward Rope brings you\nup to Delver's Yard and leaves a way back down to where you were.", 13, UITheme.TEXT_DIM))
 	show_win(w)
 
 func on_feature(f) -> void:

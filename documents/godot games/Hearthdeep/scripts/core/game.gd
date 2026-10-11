@@ -288,6 +288,7 @@ func default_character(nm: String, look: Dictionary) -> Dictionary:
 		Items.make("rod_0"), Items.make("turnip_seeds", 12), Items.make("potato_seeds", 6), Items.make("campfire_bread", 5), Items.make("worm", 10)]
 	for i in start.size():
 		slots[i] = start[i]
+	slots[10] = Items.make("escape_rope", 3)
 	return {"name": nm, "look": look, "inv": slots, "bag": BAG_START,
 		"equip": {"hat": {}, "boots": {}, "t1": {}, "t2": {}}, "hp": 100.0,
 		"skills": {}, "stats": {}, "zone": "over", "pos": null, "spawned": false}

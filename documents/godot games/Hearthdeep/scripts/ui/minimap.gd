@@ -156,6 +156,8 @@ func _draw_pois(z: Overworld, pp: Vector3) -> void:
 	marks.append([Vector2(g.farm_rect.get_center().x, g.farm_rect.position.y + 6), Color("ffd27a")])
 	marks.append([g.town_center, Color("e8a0a0")])
 	marks.append([g.cave_pos, Color("b0a0ff")])
+	for gt in g.gates:
+		marks.append([gt["p"], Color("e8c06a")])
 	for q in g.pois:
 		if Game.world["know"]["places"].has(q["id"]):
 			marks.append([q["pos"], Color("f6ead2")])

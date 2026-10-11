@@ -108,7 +108,8 @@ func _build_blocks(day: int) -> void:
 			_add(wake, 420.0, yard, true, 0.0, "home")
 			_add(420.0, 720.0, tavern_spot, false, 2.5, "play")
 		else:
-			_add(wake, 360.0, plaza, false, 6.0, "play")
+			var morning := plaza if rng.randf() < 0.6 else town.spot("dock" if rng.randf() < 0.5 else "riverbank")
+			_add(wake, 360.0, morning, false, 5.0, "play")
 			_add(360.0, 420.0, yard, false, 2.0, "lunch")
 			_add(420.0, 660.0, friend_home, false, 4.0, "play")
 			_add(660.0, 780.0, plaza, false, 6.0, "play")
@@ -147,38 +148,27 @@ func _bench_spot(rng: RandomNumberGenerator) -> Vector3:
 func _job_spot(role: String, rng: RandomNumberGenerator, yard: Vector3) -> Vector3:
 	match role:
 		"farmer", "herder":
-			var a := rng.randf() * TAU
-			return town.center + Vector3(cos(a), 0, sin(a)) * (TownGen.R_OUTER + 8.0)
+			return town.spot("garden" if rng.randf() < 0.5 else "meadow")
+		"beekeeper":
+			return town.spot("meadow")
 		"teacher", "scholar", "historian":
-			return town.building_for_role("mayor").get("front", town.center) + Vector3(rng.randf_range(-3, 3), 0, rng.randf_range(-3, 3))
+			return town.spot("school")
 		"musician":
 			return _bench_spot(rng)
-		"guard", "explorer":
-			var ang: float = town.road_angles[1]
-			return town.center + Vector3(cos(ang), 0, sin(ang)) * (TownGen.R_OUTER + 4.0)
+		"guard", "explorer", "miner":
+			return town.spot("watch")
+		"painter", "stargazer":
+			return town.spot("riverbank" if rng.randf() < 0.6 else "meadow")
+		"baker", "chef":
+			return town.building_for_role("innkeeper").get("front", yard)
 		"courier":
 			var b: Dictionary = town.buildings[rng.randi() % town.buildings.size()]
 			return b["front"]
 	return yard + Vector3(rng.randf_range(-2, 2), 0, rng.randf_range(-2, 2))
 
-## Walking route between two spots: radially onto the ring street, around, and out.
+## Walking route between two spots, along the town's streets.
 func _route(a: Vector3, b: Vector3) -> PackedVector3Array:
-	var pts := PackedVector3Array()
-	pts.append(a)
-	var c := town.center
-	var ra := Vector2(a.x - c.x, a.z - c.z)
-	var rb := Vector2(b.x - c.x, b.z - c.z)
-	var ring := TownGen.PLAZA_R + 3.0
-	if ra.length() > ring + 1.0 or rb.length() > ring + 1.0:
-		var aa := ra.angle()
-		var ab := rb.angle()
-		var da := wrapf(ab - aa, -PI, PI)
-		var steps := int(abs(da) / 0.35) + 1
-		for i in steps + 1:
-			var ang := aa + da * float(i) / steps
-			pts.append(c + Vector3(cos(ang), 0, sin(ang)) * ring)
-	pts.append(b)
-	return pts
+	return town.route(a, b)
 
 func _pos_at(t: float) -> Dictionary:
 	var day := Game.day()

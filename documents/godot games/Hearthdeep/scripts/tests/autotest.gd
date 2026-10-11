@@ -828,3 +828,208 @@ func _run_tipshot(_a: Array) -> void:
 	await get_tree().create_timer(1.0).timeout
 	await _shot("tip")
 	get_tree().quit()
+
+## Top-down debug image of the overworld layout: --autotest=mapdump[:seed]
+func _run_mapdump(a: Array) -> void:
+	var seed_v := int(a[0]) if a.size() > 0 else 12345
+	Game.world = Game.new_world_state("Map", seed_v, {})
+	var t0 := Time.get_ticks_msec()
+	var g := OverworldGen.new()
+	g.generate(seed_v)
+	_log("generated in %d ms; pois=%d spawns=%d forage=%d ponds=%d bridges=%d" % [Time.get_ticks_msec() - t0, g.pois.size(), g.spawns.size(), g.forage_spots.size(), g.ponds.size(), g.bridges.size()])
+	var S := OverworldGen.S
+	var sc := 3
+	var img := Image.create(S * sc, S * sc, false, Image.FORMAT_RGBA8)
+	for z in S:
+		for x in S:
+			var c := g.color_at(x, z)
+			var h := g.heights[z * OverworldGen.N + x]
+			if g.water_idx[z * S + x] != 0 and h < g.water_lvl[z * S + x]:
+				c = Color("4f8ab0")
+			c = c.lightened(clamp((h - 5.0) / 40.0, 0.0, 0.4))
+			c.a = 1.0
+			if g.core[z * S + x] == 0:
+				c = c.darkened(0.18)
+			img.fill_rect(Rect2i(x * sc, z * sc, sc, sc), c)
+	for s in g.spawns:
+		var p: Vector3 = s["p"]
+		var col := Color("1f4a1f") if s["k"] in ["oak", "birch", "pine", "willow"] else Color("6a6a6a")
+		if s.get("farm", false):
+			col = Color("8a6a3a")
+		img.fill_rect(Rect2i(int(p.x * sc) - 1, int(p.z * sc) - 1, 3, 3), col)
+	for w in g.walls:
+		var aa: Vector2 = w["a"]
+		var bb: Vector2 = w["b"]
+		for k in 200:
+			var q := aa.lerp(bb, k / 199.0)
+			img.fill_rect(Rect2i(int(q.x * sc) - 1, int(q.y * sc) - 1, 3, 3), Color("d0c8b0"))
+	for b in ValleyLayout.BUILDINGS:
+		var pos: Vector2 = b["pos"]
+		var fwd: Vector2 = (Vector2(b["face"]) - pos).normalized()
+		var right := Vector2(fwd.y, -fwd.x)
+		for i in 40:
+			for j in 40:
+				var q2 := pos + right * (float(b["w"]) * (i / 39.0 - 0.5)) + fwd * (float(b["d"]) * (j / 39.0 - 0.5))
+				var col2: Color = b["roof"] if b["role"] != "lot" else Color("c8b890")
+				img.set_pixel(clamp(int(q2.x * sc), 0, S * sc - 1), clamp(int(q2.y * sc), 0, S * sc - 1), col2)
+		var door := pos + fwd * (float(b["d"]) / 2.0 + 1.6)
+		img.fill_rect(Rect2i(int(door.x * sc) - 2, int(door.y * sc) - 2, 4, 4), Color.YELLOW)
+	for q in g.pois:
+		var pp: Vector2 = q["pos"]
+		img.fill_rect(Rect2i(int(pp.x * sc) - 4, int(pp.y * sc) - 4, 8, 8), Color.MAGENTA if q.get("wild", false) else Color.CYAN)
+	for gt in g.gates:
+		var gp: Vector2 = gt["p"]
+		img.fill_rect(Rect2i(int(gp.x * sc) - 5, int(gp.y * sc) - 5, 10, 10), Color.RED)
+	for k in ValleyLayout.STREET_NODES:
+		var np: Vector2 = ValleyLayout.STREET_NODES[k]
+		img.fill_rect(Rect2i(int(np.x * sc) - 2, int(np.y * sc) - 2, 4, 4), Color.WHITE)
+	var cp := g.cave_pos
+	img.fill_rect(Rect2i(int(cp.x * sc) - 6, int(cp.y * sc) - 6, 12, 12), Color.BLACK)
+	var path := ProjectSettings.globalize_path(out_dir + "/mapdump_%d.png" % seed_v)
+	img.save_png(path)
+	_log("saved " + path)
+	# heights along a few lines, to check the cliffs and the ramp
+	var line := ""
+	for z in range(56, 96, 4):
+		line += "%d:%.1f " % [z, g.h_at(190, z)]
+	_log("cliff at x=190: " + line)
+	line = ""
+	for k in 8:
+		var q3: Vector2 = Vector2(ValleyLayout.HIGHLAND_RAMP[0]).lerp(ValleyLayout.HIGHLAND_RAMP[1], k / 7.0)
+		line += "%.1f " % g.h_at(q3.x, q3.y)
+	_log("ramp heights: " + line)
+	var nc := 0
+	for v in g.core:
+		nc += v
+	_log("core cells: %d of %d" % [nc, S * S])
+	get_tree().quit()
+
+## Screenshots around the hand-made valley: --autotest=valley
+func _run_valley(_a: Array) -> void:
+	_start_world(12345)
+	await _frames(20)
+	var lp = Game.local_player
+	var z = Zones.get_zone("over")
+	var cam = Game.main.cam
+	Game.tod = 200.0
+	var views := [
+		["plaza", Vector2(190, 152), 30.0],
+		["plaza_close", Vector2(186, 150), 16.0],
+		["north_street", Vector2(190, 112), 22.0],
+		["yard", Vector2(190, 94), 20.0],
+		["farm", Vector2(110, 138), 30.0],
+		["west_gate", Vector2(64, 132), 18.0],
+		["falls", Vector2(246, 92), 20.0],
+		["east_bridge", Vector2(244, 148), 20.0],
+		["dock", Vector2(104, 204), 20.0],
+		["ramp", Vector2(120, 94), 22.0],
+		["highlands", Vector2(110, 52), 22.0],
+		["whisperwood", Vector2(36, 150), 20.0],
+		["south_street", Vector2(190, 200), 22.0],
+	]
+	if not _a.is_empty():
+		views = views.filter(func(v): return _a.has(v[0]))
+	for v in views:
+		var p: Vector2 = v[1]
+		lp.global_position = Vector3(p.x, z.ground_y(p.x, p.y) + 0.3, p.y)
+		cam.target_dist = v[2]
+		cam.snap()
+		await _frames(30)
+		_log("%s: area '%s'" % [v[0], z.area_name(lp.global_position)])
+		await _shot("valley_" + v[0])
+	get_tree().quit()
+
+## Fate-style travel: rope up, portal back, straight to the deepest floor.
+func _run_delve(_a: Array) -> void:
+	_start_world(12345)
+	await _frames(10)
+	var lp = Game.local_player
+	_check(Game.inv.count("escape_rope") == 3, "start with 3 homeward ropes")
+	Game.main.travel_to_floor(4)
+	await _frames(60)
+	_check(lp.zone_id == "cave_4", "went down to floor 4")
+	var spot: Vector3 = lp.global_position + Vector3(1.0, 0, 0)
+	lp.global_position = spot
+	await _frames(5)
+	Game.main.escape_to_surface()
+	await _frames(60)
+	_check(lp.zone_id == "over", "rope brought us up")
+	_check(lp.global_position.distance_to(Vector3(190, lp.global_position.y, 90)) < 6.0, "arrived in Delver's Yard")
+	var over = Zones.get_zone("over")
+	await _frames(40)
+	_check(over.objs.has("cave_portal"), "a way back down is waiting")
+	await _shot("delve_portal")
+	Game.main.on_feature(over.objs["cave_portal"], lp)
+	await _frames(60)
+	_check(lp.zone_id == "cave_4" and lp.global_position.distance_to(spot) < 2.0, "portal returned us to the exact spot (%s, %.1f m)" % [lp.zone_id, lp.global_position.distance_to(spot)])
+	_check(not Game.me.has("cave_return"), "portal used up")
+	Zones.travel_local("over", null, "yard")
+	await _frames(40)
+	_check(not over.objs.has("cave_portal"), "portal gone once used")
+	Game.main.ui.open_cave_menu()
+	await _frames(5)
+	await _shot("delve_menu")
+	Game.main.ui.close()
+	Game.main.travel_to_floor(int(Game.world["know"]["deepest"]))
+	await _frames(60)
+	_check(lp.zone_id == "cave_%d" % int(Game.world["know"]["deepest"]), "straight down to the deepest floor (%s)" % lp.zone_id)
+	_log("DONE fails=%d" % _fails)
+	get_tree().quit()
+
+## Sanity checks for the hand-made town: --autotest=towncheck
+func _run_towncheck(_a: Array) -> void:
+	_start_world(12345)
+	await _frames(5)
+	var town: TownGen = Zones.town
+	var bad_items: Array = []
+	for spec in TownCast.RESIDENTS + TownCast.NEWCOMERS:
+		for id in spec["loves"] + spec["likes"]:
+			if not Items.has(id):
+				bad_items.append("%s:%s" % [spec["key"], id])
+	_check(bad_items.is_empty(), "cast tastes are real items %s" % str(bad_items))
+	var inside := func(p: Vector3, margin: float) -> String:
+		for b in town.buildings:
+			if b["role"] == "lot":
+				continue
+			var local: Vector3 = Basis(Vector3.UP, b["yaw"]).inverse() * (p - b["pos"])
+			if abs(local.x) < b["w"] / 2.0 + margin and abs(local.z) < b["d"] / 2.0 + margin:
+				return b["id"]
+		return ""
+	# routes between every home, workplace and spot
+	var pts: Array = []
+	for b in town.buildings:
+		pts.append(b["front"])
+	for k in ValleyLayout.SPOTS:
+		pts.append(town.spot(k))
+	var hits := {}
+	for i in pts.size():
+		for j in pts.size():
+			if i == j:
+				continue
+			var r := town.route(pts[i], pts[j])
+			for k in range(1, r.size()):
+				var seg: float = r[k - 1].distance_to(r[k])
+				var n := int(seg / 0.5) + 1
+				for s in n:
+					var q: Vector3 = r[k - 1].lerp(r[k], float(s) / n)
+					var hit: String = inside.call(q, -0.3)
+					if hit != "":
+						hits["%d>%d:%s" % [i, j, hit]] = true
+	_check(hits.is_empty(), "walking routes never pass through buildings (%d hits) %s" % [hits.size(), str(hits.keys().slice(0, 6))])
+	var clutter: Array = []
+	for d in town.decor:
+		if d.has("p") and inside.call(d["p"], 0.3) != "":
+			clutter.append("%s@%s" % [d["k"], str(d["p"])])
+	for lp in town.lamps:
+		if inside.call(lp, 0.3) != "":
+			clutter.append("lamp@%s" % str(lp))
+	_check(clutter.is_empty(), "no trees, benches or lamps inside buildings %s" % str(clutter))
+	var g = Zones.get_zone("over").gen
+	var on_road: Array = []
+	for b in town.buildings:
+		var c: Vector3 = b["pos"]
+		if g.road[g.cell(c.x, c.z)] > 120:
+			on_road.append(b["id"])
+	_check(on_road.is_empty(), "no building sits on a street %s" % str(on_road))
+	_log("DONE fails=%d" % _fails)
+	get_tree().quit()

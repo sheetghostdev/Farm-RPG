@@ -18,7 +18,7 @@ up doing what just does it, and the town notices.
 
 ## Running it
 
-1. Install **Godot 4.4** (standard build; no .NET needed).
+1. Install **Godot 4.4 or newer** (standard build; no .NET needed). It's tested on 4.4 and 4.7.
 2. Open `project.godot` in this folder and press **F5**, or run it directly:
    `godot --path "documents/godot games/Hearthdeep"`
 
@@ -58,21 +58,32 @@ goes into one shared purse. The carpenter can renovate the farmhouse twice. The
 interior grows with it, and anything you place inside stays where you put it. The
 hearth cooks proper meals.
 
-**The valley.** A finite 320 m overworld built from the world seed: a river with
-bridges and a ford, a lake, ponds, a hidden pool, a hot spring, ruins,
-standing stones, an old watchtower and more. Each landmark is named, and the
-first person to reach it gets their name in the chronicle. Forage and dig spots
-change daily. Weather and seasons change the light, the foliage, the snow and
-what grows, bites and blooms.
+**The valley.** Hand-designed and the same in every world, like a Stardew
+Valley map. Brindlewick's plaza sits in the middle with the Town Hall, General
+Store, Tavern and Smithy around its fountain. Your farm is just west of town. The
+cave mouth is a short walk up the north street, cut into the cliffs at Delver's
+Yard. Willow Falls feeds a river that runs down the east side and along the south
+into Heron Lake, with a pier for fishing. Weather and seasons change the light,
+the foliage, the snow and what grows, bites and blooms.
 
-**The town.** Also generated from the seed: about 14 residents with families,
-jobs, personality traits, interests, birthdays, things they love and things they
-can't stand, and one wish each. Shops keep hours. Residents walk their daily
-routes, post requests on the board and react to what the household has done
-lately. They also slowly notice who has become "the one who fishes". Friendship
-milestones bring gifts and recipes. Eleven community projects (mending the old
-bridge, lamps, a market, cottages for newcomers, a pier, a lodge, a curio hall
-and more) change the town physically and draw new people in.
+**The wilds.** Beyond the valley's borders, which are the cliffs, the river and a
+dry-stone wall, the land is different in every world: the Highlands up a trail
+through the cliffs, Whisperwood past the west gate, Fenmarsh over the south
+bridge and Eastmeadow over the east bridge. Out there you find camps, ruins,
+standing stones, a watchtower, mushroom rings, copper outcrops, a hidden pool, a
+hot spring and more. Each landmark is named, and the first person to reach it
+gets their name in the chronicle. Forage and dig spots change daily.
+
+**The town.** The same folks in every world: nineteen residents in ten
+households, from Mayor Rosalind Thatcher and her family to Bram the blacksmith,
+Juniper at the apothecary and Hollis down at the bait shop. Each has a job,
+family, temperament, interests, a birthday, things they love and things they
+can't stand, and one wish. Shops keep hours. Residents walk the streets on their
+daily routines, post requests on the board and react to what the household has
+done lately. They also slowly notice who has become "the one who fishes".
+Friendship milestones bring gifts and recipes. Eleven community projects
+(mending the old bridge, lamps, a market, cottages for newcomers, a pier, a lodge,
+a curio hall and more) change the town physically and bring in new neighbors.
 
 **The caves.** Every floor is generated: winding tunnels, big caverns, old mine
 passages with rails, underground lakes, chasms with narrow bridges, lava, hidden
@@ -80,8 +91,14 @@ chambers behind cracked walls, and six biomes as you go down (Earthen Tunnels,
 Mossy Grotto, Crystal Hollows, Fungal Depths, Ember Rift, Ancient Halls). Each floor
 has ore, gems, rare plants, treasure, fishing spots, notes left by the Lantern
 Company who went down long ago, and keepsakes the townsfolk lost. A floor's map
-fills in as anyone in the household explores it. Waystones let you return to a
-depth, and there's always another way down.
+fills in as anyone in the household explores it.
+
+Getting in and out works like Fate. The cave mouth always offers floor 1 or
+straight down to the deepest floor anyone has reached. A Homeward Rope takes you
+back up to Delver's Yard and leaves a shimmering portal that drops you back at
+the exact spot you left. You start with three ropes; they're cheap at the
+General Store, or crafted from fiber and sap. Waystones let you jump to the
+depths you've attuned.
 
 **Combat.** Readable on purpose. Eight creature types, each with its own
 behavior: bats circle and dart in, burrowers tunnel under you and burst up,
@@ -124,9 +141,13 @@ lore notes, everyone in town and each player's skills and stats.
 * **Zones side by side.** The overworld, the farmhouse and each cave floor are
   separate `Zone` nodes placed at different offsets in one 3D world, so the host
   can simulate several areas at once while friends split up.
-* **Deterministic generation.** All world content comes from seeded RNGs
-  (`Game.rng_for`). Clients regenerate terrain, town and caves locally instead
-  of downloading them, and townsfolk schedules are pure functions of game time.
+* **A designed valley, generated wilds.** The valley is laid out by hand in
+  `scripts/gen/valley_layout.gd`: farm, streets, buildings, river, lake, borders,
+  gates, groves, lamps and benches. The townsfolk are written in
+  `scripts/gen/town_cast.gd`. `OverworldGen` builds that valley the same way every
+  time, then generates the wilds beyond the borders and the caves from the world
+  seed. Clients rebuild everything locally instead of downloading it, and
+  townsfolk schedules are pure functions of game time.
 * **Procedural assets.** `MeshBuilder` builds flat-shaded, vertex-colored meshes.
   The look comes from a few custom shaders: wind and snow on foliage, a cutaway
   around the player, roofs and walls that hide when they block the view, water,
@@ -136,7 +157,8 @@ lore notes, everyone in town and each player's skills and stats.
 ```
 scripts/
   core/      autoloads: Game (state, clock, changes), Net, ServerLogic, Zones, Items, Meshes, Sfx
-  gen/       OverworldGen, TownGen, CaveGen, Dialogue, Lore
+  gen/       ValleyLayout (the hand-made valley), TownCast (the townsfolk), OverworldGen,
+             TownGen, CaveGen, Dialogue, Lore
   world/     Overworld, HomeZone, CaveFloor, FarmLayer, TownBuilder, EnvController
   entities/  Player, NPC, Enemy, Animal, ResourceNode, PlacedObj, Feature, Pickup, Projectile, CameraRig
   systems/   Inventory, Loot, Fishing, TownLogic, QuestLogic
@@ -158,6 +180,8 @@ godot --headless --path . -- --autotest=cave:1:5:13:28   # floors build, exits r
 godot --headless --path . -- --autotest=fish     # cast, bite, minigame, fish log
 godot --headless --path . -- --autotest=home     # interior, renovations, journal, map, cave fog
 godot --headless --path . -- --autotest=menu     # title screen and a save -> quit -> load round trip
+godot --headless --path . -- --autotest=delve    # Homeward Rope, return portal, straight to the deepest floor
+godot --headless --path . -- --autotest=towncheck  # walking routes, decor and cast data are sound
 ```
 
 Multiplayer runs two processes at once:
@@ -169,8 +193,10 @@ godot --headless --path . -- --autotest=mpclient:24601
 
 Each test prints `PASS`/`FAIL` lines and ends with `DONE fails=N`. Run the same
 tests with a window (or under `xvfb-run`) and they also save screenshots to
-`tests_out/`. `--autotest=gallery:props` (or `cave`, `place`, `crops`, `items`)
-renders model sheets.
+`tests_out/`. `--autotest=valley` photographs spots around the valley,
+`--autotest=mapdump` saves a top-down layout image, and
+`--autotest=gallery:props` (or `cave`, `place`, `crops`, `items`) renders model
+sheets.
 
 ## Known limits
 

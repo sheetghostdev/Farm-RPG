@@ -223,10 +223,25 @@ class MapView extends Control:
 	func _draw_over_labels(font: Font) -> void:
 		var g := Zones.overworld_gen()
 		var known: Dictionary = Game.world["know"].get("places", {})
+		# the border walls and the gates through them
+		for w in g.walls:
+			draw_line(to_screen(w["a"]), to_screen(w["b"]), Color("d8d0b8"), max(2.0, zoom * 0.8))
+		for gt in g.gates:
+			var gp := to_screen(gt["p"])
+			draw_circle(gp, 4.0, Color(0, 0, 0, 0.7))
+			draw_circle(gp, 3.0, Color("e8c06a"))
+		# the wild regions beyond the valley
+		var regions := {"north": Vector2(160, 36), "west": Vector2(30, 170), "south": Vector2(170, 284), "east": Vector2(290, 190)}
+		for r in regions:
+			var rp: Vector2 = regions[r]
+			var nm: String = ValleyLayout.REGION_NAMES[r]
+			var sz := 20
+			var w2 := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x
+			_text(font, to_screen(rp) - Vector2(w2 / 2.0, 0), nm, sz, Color(0.95, 0.9, 0.8, 0.8))
 		var marks: Array = []
 		marks.append([Vector2(g.farm_rect.get_center().x, g.farm_rect.position.y + 6.5), "Home", Color("ffd27a"), 17])
 		marks.append([g.town_center, TownGen.town_name(), Color("ffb0a0"), 18])
-		marks.append([g.cave_pos, "The Caves", Color("b0a0ff"), 16])
+		marks.append([g.cave_pos + Vector2(0, 10), "Delver's Yard", Color("b0a0ff"), 16])
 		for q in g.pois:
 			var nm: String = q.get("name", "")
 			if nm == "" or not known.has(q["id"]):

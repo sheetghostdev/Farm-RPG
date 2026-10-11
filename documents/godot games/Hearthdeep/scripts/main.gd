@@ -106,6 +106,7 @@ func _enter_world(char_data: Dictionary) -> void:
 			Game.discover_item(it["id"])
 	Zones.clear_all()
 	var over := Zones.ensure_zone("over") as Overworld
+	Zones.mark_valley_explored()
 	var zid: String = char_data.get("zone", "over")
 	var pos = char_data.get("pos", null)
 	if zid != "over" and zid != "home":
@@ -274,6 +275,18 @@ func on_feature(f: Feature, player) -> void:
 		"waystone":
 			Net.request("waystone", {"f": Zones.floor_of(player.zone_id)})
 			ui.open_cave_menu(true)
+		"cave_portal":
+			use_cave_return()
+		"cave_board":
+			var deepest := int(Game.world["know"].get("deepest", 0))
+			var stones: Array = Game.world["know"].get("waystones", []).duplicate()
+			stones.sort()
+			var txt := "DELVERS' BOARD\n\n"
+			txt += ("Deepest floor reached: %d\n" % deepest) if deepest > 0 else "Nobody has gone down yet. Be the first!\n"
+			if not stones.is_empty():
+				txt += "Waystones attuned: %s\n" % ", ".join(PackedStringArray(stones.map(func(x): return str(x))))
+			txt += "\nThe cave mouth will take you to floor 1 or straight down to the deepest floor anyone has reached.\nA Homeward Rope brings you back up here, and leaves a way back down to the exact spot you left.\nRopes: the General Store, or 15 fiber and 2 sap at a workbench."
+			ui.show_message(txt, "Delver's Yard")
 		"ship_bin":
 			ui.open_shipping()
 		"hearth":
@@ -304,8 +317,27 @@ func _transition(cb: Callable) -> void:
 	tw.tween_callback(cb)
 	tw.tween_property(hud.fade, "color:a", 0.0, 0.45)
 
-func travel_to_floor(n: int) -> void:
-	_transition(func(): Zones.travel_local("cave_%d" % n, null, "up"))
+func travel_to_floor(n: int, pos = null) -> void:
+	_transition(func(): Zones.travel_local("cave_%d" % n, pos, "up"))
+
+## Remember where in the caves this player left off, so they can drop straight back in.
+func set_cave_return() -> void:
+	var lp = Game.local_player
+	if lp == null:
+		return
+	var n := Zones.floor_of(lp.zone_id)
+	if n > 0:
+		Game.me["cave_return"] = {"f": n, "pos": lp.global_position}
+		Game.stats_changed.emit()
+
+func use_cave_return() -> void:
+	var r: Dictionary = Game.me.get("cave_return", {})
+	if r.is_empty():
+		return
+	Game.me.erase("cave_return")
+	Game.stats_changed.emit()
+	Sfx.play("magic")
+	travel_to_floor(int(r["f"]), r["pos"])
 
 ## Out of health with nobody to help: wake up at home with lighter pockets.
 func pass_out() -> void:
@@ -313,6 +345,7 @@ func pass_out() -> void:
 	if lp == null:
 		return
 	var zid: String = lp.zone_id
+	set_cave_return()
 	var lost := _lose_items()
 	Net.request("passed_out", {"z": zid})
 	Game.add_stat("times_carried_home")
@@ -325,6 +358,9 @@ func pass_out() -> void:
 		var msg := "You wake up at home. Someone found you and carried you back."
 		if lost != "":
 			msg += "\nLost along the way: " + lost
+		var r: Dictionary = Game.me.get("cave_return", {})
+		if not r.is_empty():
+			msg += "\nA way back down to floor %d is waiting for you in Delver's Yard." % int(r["f"])
 		ui.show_message(msg))
 	tw.tween_property(hud.fade, "color:a", 0.0, 1.2)
 
@@ -351,7 +387,11 @@ func _lose_items() -> String:
 
 func escape_to_surface() -> void:
 	Sfx.play("magic")
-	_transition(func(): Zones.travel_local("over", null, "cave"))
+	set_cave_return()
+	var r: Dictionary = Game.me.get("cave_return", {})
+	if not r.is_empty():
+		Game.say("A shimmering way back down to floor %d waits for you in Delver's Yard." % int(r["f"]), Color("bfe3ff"))
+	_transition(func(): Zones.travel_local("over", null, "yard"))
 
 # ------------------------------------------------------------------ window shortcuts used by world objects
 

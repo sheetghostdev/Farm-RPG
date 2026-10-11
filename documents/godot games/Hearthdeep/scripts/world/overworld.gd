@@ -16,6 +16,8 @@ var _discover_t := 0.0
 var _explore_t := 0.0
 var _explore_pending := PackedInt32Array()
 var bridge_nodes := {}
+var _portal_t := 0.0
+var _portal_floor := 0
 
 func _init() -> void:
 	super._init()
@@ -45,6 +47,7 @@ func build() -> void:
 	_build_pois()
 	_build_farm()
 	_build_cave_entrance()
+	_build_borders()
 	town = TownBuilder.new()
 	town.name = "Town"
 	add_child(town)
@@ -68,10 +71,10 @@ func area_name(p: Vector3) -> String:
 	var q := Vector2(p.x, p.z)
 	if gen.farm_rect.grow(2.0).has_point(q):
 		return "Home Farm"
-	if gen.town_rect.grow(4.0).has_point(q):
+	if gen.town_rect.has_point(q) and gen.is_core(q.x, q.y):
 		return TownGen.town_name()
-	if q.distance_to(gen.cave_pos) < 14.0:
-		return "The Cave Mouth"
+	if q.distance_to(Vector2(190, 86)) < 14.0:
+		return "Delver's Yard"
 	var best := ""
 	var bd := 1e9
 	for poi in gen.pois:
@@ -84,7 +87,7 @@ func area_name(p: Vector3) -> String:
 			best = nm
 	if best != "":
 		return best[0].to_upper() + best.substr(1)
-	return "The Valley"
+	return ValleyLayout.REGION_NAMES.get(gen.region_at(q.x, q.y), "The Valley")
 
 func ground_y(x: float, z: float) -> float:
 	return gen.h_at(x, z)
@@ -107,6 +110,8 @@ func spawn_point(tag: String = "") -> Vector3:
 			return f + Vector3(0, 0.3, 1.5)
 		"town":
 			return Vector3(gen.town_center.x, gen.town_h + 0.3, gen.town_center.y + 8)
+		"yard":
+			return Vector3(190, gen.h_at(190, 90) + 0.3, 90)
 	return gen.farm_spawn()
 
 func farmhouse_pos() -> Vector3:
@@ -428,7 +433,7 @@ func _v3(p: Vector2) -> Vector3:
 func _build_pois() -> void:
 	var rng := RandomNumberGenerator.new()
 	for q in gen.pois:
-		rng.seed = Game.hash_ints(gen.seed_value, String(q["id"]).hash())
+		rng.seed = Game.hash_ints(gen.seed_value if q.get("wild", false) else OverworldGen.CORE_SEED, String(q["id"]).hash())
 		var c: Vector2 = q["pos"]
 		var pid: String = q["id"]
 		match q["type"]:
@@ -533,8 +538,66 @@ func _build_pois() -> void:
 				add_child(f)
 				register(f)
 			"old_bridge":
-				var sign := Feature.new().setup("old_bridge_sign", "sign", "Read sign", _v3(c) + Vector3(0, 0, 0), 0.1, {"text": "BRIDGE OUT. Ask at the town hall."})
-				pass
+				if not bool(Game.world["flags"].get("bridge_fixed", false)):
+					var sp := c + Vector2(3.0, -9.5)
+					var sign := Feature.new().setup("old_bridge_sign", "sign", "Read sign", _v3(sp), 0.9, {"text": "BRIDGE OUT.\nThe town hall is raising funds to mend it."})
+					add_child(sign)
+					sign.set_mesh(Props.get_mesh("signpost", 0), 0.0, 0.3)
+					register(sign)
+			"falls":
+				_build_falls()
+			"yard":
+				var bp := Vector2(181, 83)
+				var board := Feature.new().setup("cave_board", "cave_board", "Read the delvers' board", _v3(bp), 1.2)
+				add_child(board)
+				board.set_mesh(Props.get_mesh("notice_board", 1), 0.0, 0.5)
+				board.add_box_blocker(Vector3(1.8, 1.8, 0.3), Vector3.ZERO, 0.5)
+				register(board)
+
+## Willow Falls: the river tumbling down the north cliffs into the valley.
+func _build_falls() -> void:
+	var top := Vector2(ValleyLayout.FALLS.x, ValleyLayout.CLIFF_Z - 7.0)
+	var base: Vector2 = gen.river[0]["p"]
+	var lvl: float = gen.river[0]["lvl"]
+	var htop := gen.h_at(top.x, top.y) + 0.4
+	var mb := MeshBuilder.new(5)
+	mb.surface("water")
+	var w := 3.2
+	var steps := 8
+	for i in steps:
+		var t0 := float(i) / steps
+		var t1 := float(i + 1) / steps
+		var z0: float = lerp(top.y, base.y - 1.0, t0)
+		var z1: float = lerp(top.y, base.y - 1.0, t1)
+		var y0: float = lerp(htop, lvl, t0 * t0)
+		var y1: float = lerp(htop, lvl, t1 * t1)
+		var a := Vector3(base.x - w, y0, z0)
+		var b := Vector3(base.x + w, y0, z0)
+		var c := Vector3(base.x + w, y1, z1)
+		var d := Vector3(base.x - w, y1, z1)
+		mb.quad2(a, b, c, d, Color.WHITE)
+	var mi := MeshInstance3D.new()
+	mi.mesh = mb.commit()
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	water_root.add_child(mi)
+	var spray := CPUParticles3D.new()
+	spray.mesh = Meshes.particle_mesh(0.9)
+	spray.amount = 26
+	spray.lifetime = 1.6
+	spray.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	spray.emission_box_extents = Vector3(2.6, 0.2, 1.0)
+	spray.direction = Vector3.UP
+	spray.spread = 35.0
+	spray.initial_velocity_min = 0.6
+	spray.initial_velocity_max = 1.6
+	spray.gravity = Vector3(0, -0.4, 0)
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 0.35))
+	g.set_color(1, Color(1, 1, 1, 0.0))
+	spray.color_ramp = g
+	spray.position = Vector3(base.x, lvl + 0.2, base.y)
+	spray.visibility_range_end = 90.0
+	struct_root.add_child(spray)
 
 func _box_body(pos: Vector3, size: Vector3, yaw: float) -> void:
 	var b := StaticBody3D.new()
@@ -582,15 +645,89 @@ func _build_farm() -> void:
 	board.set_mesh(Props.get_mesh("notice_board", 1), 0.0, 0.0, 0.8)
 	board.add_box_blocker(Vector3(1.8, 1.8, 0.3))
 	register(board)
-	# a mailbox-style sign at the farm gate and a few fence remnants
-	var gate := Vector3(fr.get_center().x + 3, gen.farm_h, fr.end.y - 0.5)
-	Meshes.inst(Props.get_mesh("signpost", 0), struct_root, Vector3(gate.x, gen.h_at(gate.x, gate.z), gate.z), 0.4)
-	var rng := Game.rng_for("fence")
-	for i in 14:
-		var t := rng.randf()
-		var fp := Vector3(lerp(fr.position.x, fr.end.x, t), 0, fr.end.y + 0.6 if i % 2 == 0 else fr.position.y - 0.6)
-		fp.y = gen.h_at(fp.x, fp.z)
-		Meshes.inst(ItemModels.placeable_mesh("fence"), struct_root, fp, 0.0)
+	_build_farm_fence()
+
+## A split-rail fence around the farm with an opening at each gate.
+func _build_farm_fence() -> void:
+	var fr := gen.farm_rect.grow(0.6)
+	var corners := [fr.position, Vector2(fr.end.x, fr.position.y), fr.end, Vector2(fr.position.x, fr.end.y)]
+	var gates: Array = ValleyLayout.FARM_GATES.values()
+	var body := StaticBody3D.new()
+	struct_root.add_child(body)
+	for i in 4:
+		var a: Vector2 = corners[i]
+		var b: Vector2 = corners[(i + 1) % 4]
+		var n := int(a.distance_to(b) / 1.0)
+		var yaw := atan2(b.x - a.x, b.y - a.y) + PI / 2.0
+		var run_start := -1
+		for k in n + 1:
+			var p: Vector2 = a.lerp(b, (k + 0.5) / n) if k < n else b
+			var at_gate := false
+			for g in gates:
+				if p.distance_to(g) < 2.4:
+					at_gate = true
+			if k < n and not at_gate:
+				Meshes.inst(ItemModels.placeable_mesh("fence"), struct_root, Vector3(p.x, gen.h_at(p.x, p.y), p.y), yaw, 1.0, 90.0)
+				if run_start < 0:
+					run_start = k
+			if (at_gate or k == n) and run_start >= 0:
+				var pa: Vector2 = a.lerp(b, float(run_start) / n)
+				var pb: Vector2 = a.lerp(b, float(k) / n)
+				var cs := CollisionShape3D.new()
+				var bs := BoxShape3D.new()
+				bs.size = Vector3(pa.distance_to(pb), 1.2, 0.3)
+				cs.shape = bs
+				var mid := (pa + pb) / 2.0
+				cs.position = Vector3(mid.x, gen.h_at(mid.x, mid.y) + 0.6, mid.y)
+				cs.rotation.y = yaw
+				body.add_child(cs)
+				run_start = -1
+	var gp: Vector2 = ValleyLayout.FARM_GATES["east"] + Vector2(1.5, -2.6)
+	var sign := Feature.new().setup("farm_sign", "sign", "Read sign", Vector3(gp.x, gen.h_at(gp.x, gp.y), gp.y), 0.8,
+		{"text": "%s\nEst. Year 1. Visitors welcome, chickens extra welcome." % Game.world.get("name", "Home Farm")})
+	add_child(sign)
+	sign.set_mesh(Props.get_mesh("wayboard", 0), 0.0, -PI / 2.0)
+	register(sign)
+
+# ------------------------------------------------------------------ borders
+
+## Dry-stone walls along the valley's west edge, gateways out to the wilds, and
+## signs naming what lies beyond.
+func _build_borders() -> void:
+	var body := StaticBody3D.new()
+	struct_root.add_child(body)
+	for w in gen.walls:
+		var a: Vector2 = w["a"]
+		var b: Vector2 = w["b"]
+		var l := a.distance_to(b)
+		var n := int(ceil(l / 4.0))
+		var yaw := atan2(b.x - a.x, b.y - a.y) + PI / 2.0
+		for k in n:
+			var p: Vector2 = a.lerp(b, (k + 0.5) / n)
+			var y := gen.h_at(p.x, p.y) - 0.15
+			var mi := Meshes.inst(Props.get_mesh("stone_wall", k % 3), struct_root, Vector3(p.x, y, p.y), yaw, 1.0, 140.0)
+			mi.scale.x = (l / n) / 4.0
+		var cs := CollisionShape3D.new()
+		var bs := BoxShape3D.new()
+		bs.size = Vector3(l, 3.0, 0.9)
+		cs.shape = bs
+		var mid := (a + b) / 2.0
+		cs.position = Vector3(mid.x, gen.h_at(mid.x, mid.y) + 1.2, mid.y)
+		cs.rotation.y = yaw
+		body.add_child(cs)
+	for g in gen.gates:
+		var p: Vector2 = g["p"]
+		var out: Vector2 = g["out"]
+		var region: String = g["region"]
+		var yaw2 := atan2(out.x, out.y)
+		if g.get("arch", false):
+			Meshes.inst(Props.get_mesh("gate_arch", 0), struct_root, Vector3(p.x, gen.h_at(p.x, p.y), p.y), yaw2)
+		var sp: Vector2 = p - out * 2.5 + out.orthogonal() * 2.6
+		var text := "%s\n%s" % [ValleyLayout.REGION_NAMES[region], ValleyLayout.REGION_BLURBS.get(region, "")]
+		var f := Feature.new().setup("sign_" + String(g["id"]), "sign", "Read sign", Vector3(sp.x, gen.h_at(sp.x, sp.y), sp.y), 0.9, {"text": text})
+		add_child(f)
+		f.set_mesh(Props.get_mesh("wayboard", 0), 0.0, yaw2 + PI)
+		register(f)
 
 func _build_farmhouse() -> void:
 	if farmhouse_mi:
@@ -666,6 +803,65 @@ func _build_cave_entrance() -> void:
 	light.position = pos + Vector3(1.9, 2.0, 1.8)
 	struct_root.add_child(light)
 	Zones.register_night_light(light)
+
+## Your way back down: a shimmering portal in Delver's Yard, shown only to the
+## player whose Homeward Rope (or rescue) left it there.
+func _update_portal() -> void:
+	var r: Dictionary = Game.me.get("cave_return", {})
+	var want := int(r.get("f", 0))
+	if want == _portal_floor:
+		return
+	_portal_floor = want
+	if objs.has("cave_portal"):
+		remove_obj("cave_portal", true)
+	if want <= 0:
+		return
+	var pp := Vector2(197.5, 84.0)
+	var pos := Vector3(pp.x, gen.h_at(pp.x, pp.y), pp.y)
+	var f := Feature.new().setup("cave_portal", "cave_portal", "Step back down to floor %d" % want, pos, 1.3)
+	add_child(f)
+	var ring := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 1.05
+	tm.outer_radius = 1.3
+	tm.rings = 32
+	tm.ring_segments = 8
+	ring.mesh = tm
+	var rm := StandardMaterial3D.new()
+	rm.albedo_color = Color("8fd8ff")
+	rm.emission_enabled = true
+	rm.emission = Color("6fc8ff")
+	rm.emission_energy_multiplier = 2.0
+	ring.material_override = rm
+	ring.rotation.x = PI / 2.0
+	ring.position = Vector3(0, 1.45, 0)
+	f.add_child(ring)
+	var disc := MeshInstance3D.new()
+	var dm := CylinderMesh.new()
+	dm.top_radius = 1.05
+	dm.bottom_radius = 1.05
+	dm.height = 0.04
+	disc.mesh = dm
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = Color(0.55, 0.85, 1.0, 0.45)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	disc.material_override = m
+	disc.rotation.x = PI / 2.0
+	disc.position = Vector3(0, 1.45, 0)
+	f.add_child(disc)
+	var l := OmniLight3D.new()
+	l.light_color = Color("8fd8ff")
+	l.light_energy = 1.6
+	l.omni_range = 6.0
+	l.position = Vector3(0, 1.5, 0.8)
+	f.add_child(l)
+	var tw := disc.create_tween().set_loops()
+	tw.tween_property(m, "albedo_color:a", 0.2, 1.2)
+	tw.tween_property(m, "albedo_color:a", 0.5, 1.2)
+	register(f)
+	f.pop_in()
+	Fx.sparkle(fx_root, pos + Vector3(0, 1.5, 0), Color("8fd8ff"), 24, 1.2)
 
 # ------------------------------------------------------------------ forage & daily things
 
@@ -827,6 +1023,10 @@ func _process(delta: float) -> void:
 	var lp = Game.local_player
 	if lp == null or lp.zone_id != zone_id:
 		return
+	_portal_t -= delta
+	if _portal_t <= 0.0:
+		_portal_t = 0.5
+		_update_portal()
 	_discover_t += delta
 	if _discover_t > 0.5:
 		_discover_t = 0.0

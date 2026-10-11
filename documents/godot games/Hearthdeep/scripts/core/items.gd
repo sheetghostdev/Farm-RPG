@@ -739,7 +739,7 @@ func _build_curios() -> void:
 	_add("soggy_letter", "Soggy Letter", "junk", 1, ["scroll", Color("d8d0b8")], {"desc": "The ink has mostly run. You can just make out a few words."})
 
 func _build_misc() -> void:
-	_add("escape_rope", "Escape Rope", "consumable", 30, ["rope", Color("c8a86a")], {"known": true, "food": {"use": "escape"}, "desc": "Use underground to climb straight back to the surface with your haul."})
+	_add("escape_rope", "Homeward Rope", "consumable", 30, ["rope", Color("c8a86a")], {"known": true, "food": {"use": "escape"}, "desc": "Use underground to climb straight back up to Delver's Yard with your haul. A way back down will be waiting there, right where you left off."})
 	_add("deluxe_bait", "Deluxe Bait", "bait", 6, ["worm", Color("e8a03a")], {"known": true, "bait": {"bite": 0.55, "rare": 0.1}})
 	_add("magnet_lure", "Magnet Lure", "bait", 25, ["coin", Color("c03a3a")], {"known": true, "bait": {"bite": 1.0, "rare": 0.0, "treasure": 0.25}, "stack": 20, "desc": "Fish don't care for it. Treasure does."})
 	_add("lost_pick", "Grandfather's Pick", "quest", 0, ["pick", Color("8a6a4a")], {"stack": 1, "desc": "Worn smooth by decades of use."})

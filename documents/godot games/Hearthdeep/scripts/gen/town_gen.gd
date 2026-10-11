@@ -1,12 +1,11 @@
 class_name TownGen
 extends RefCounted
-## Generates the town: its name, the buildings ringed around a plaza, and the
-## families who live there with their jobs, temperaments, interests and ties.
-## Deterministic from the world seed; newcomers are appended as the town grows.
+## The town of Brindlewick: its buildings around the plaza and along its four
+## streets (from ValleyLayout), the people who live there (from TownCast), the
+## street network they walk along, and the newcomers who arrive as it grows.
+## The same in every world.
 
 const PLAZA_R := 9.0
-const R_INNER := 19.0
-const R_OUTER := 31.0
 
 const SHOP_ROLES := ["merchant", "smith", "innkeeper", "herbalist", "carpenter", "angler", "mayor"]
 const ROLE_INFO := {
@@ -64,42 +63,40 @@ const WISHES := {
 	"stars": "lumenfruit", "gems": "emerald", "baking": "honey_cake", "books": "star_map", "flowers": "crystalbloom",
 	"exploring": "dragon_tooth", "trading": "heartstone",
 }
-const FIRST := ["Agnes", "Bram", "Cora", "Dov", "Elsie", "Finn", "Greta", "Hollis", "Ida", "Jory", "Kit", "Linnea", "Mabel", "Nico", "Opal",
-	"Percy", "Quill", "Rosalind", "Silas", "Tamsin", "Ulla", "Vance", "Wren", "Ximena", "Yusuf", "Zelda", "Amara", "Basil", "Calla",
-	"Dashiell", "Esme", "Fenn", "Gideon", "Hattie", "Ines", "Jasper", "Kenji", "Lorna", "Magnus", "Nell", "Otto", "Pia", "Rafe",
-	"Saoirse", "Teodor", "Una", "Wilhelmina", "Yara", "Arlo", "Bea", "Cassius", "Delphine", "Emeric", "Flora", "Gus", "Hana", "Ivo",
-	"Juniper", "Kasimir", "Leander", "Marisol", "Nadia", "Oskar", "Prue", "Rowan", "Sunniva", "Thaddeus", "Viola", "Winifred", "Zeno",
-	"Ada", "Booker", "Clementine", "Darius", "Edie", "Felix", "Ginny", "Horace", "Imogen", "Jonah", "Kalinda", "Lucius", "Mirela",
-	"Noor", "Orla", "Pascal", "Reuben", "Sela", "Tobiah", "Vesna", "Wendell", "Anouk", "Bertil", "Ciaran", "Dagny", "Ezra", "Freya"]
-const LAST := ["Ashdown", "Barrow", "Cobble", "Dunmore", "Elwood", "Fairweather", "Glenn", "Holloway", "Ironside", "Kettleby", "Larkspur",
-	"Marsh", "Nettle", "Oakes", "Pennywhistle", "Quarry", "Rook", "Stonebrook", "Thatcher", "Underhill", "Vale", "Whitlock", "Yarrow",
-	"Applegate", "Birch", "Copperfield", "Dewhurst", "Fenwick", "Goodwin", "Hearn", "Lowell", "Merriweather", "Norrow", "Pike", "Reed",
-	"Sorrel", "Tanner", "Wick", "Brightwater", "Hollins", "Mossgrove", "Tumbledown", "Ember", "Quaile"]
-const NAME_A := ["Hollow", "Brindle", "Ash", "Wren", "Thistle", "Copper", "Elder", "Moss", "Fern", "Lark", "Oak", "Pebble", "Bramble",
-	"Juniper", "Marrow", "Kettle", "Lantern", "Willow", "Heron", "Clover", "Amber", "Tallow", "Rook", "Sorrel"]
-const NAME_B := ["mere", "wick", "ford", "brook", "stead", "holm", "haven", "dale", "well", "cross", "bury", "field", "combe", "hollow", "by", "ton"]
-
 var name := ""
 var center := Vector3.ZERO
 var buildings: Array = []
 var residents: Array = []
 var by_id := {}
 var decor: Array = []
+var lamps: Array = []
 var rng := RandomNumberGenerator.new()
 var road_angles: Array = []
+var _nodes := {}            # node name -> Vector3
+var _links := {}            # node name -> Array of node names
+var _paths := {}            # "a>b" -> Array of node names (cached shortest paths)
+var _key_to_id := {}
 
 static func town_name() -> String:
-	var r := RandomNumberGenerator.new()
-	r.seed = Game.hash_ints(int(Game.world.get("seed", 1)), 7171)
-	return NAME_A[r.randi() % NAME_A.size()] + NAME_B[r.randi() % NAME_B.size()]
+	return ValleyLayout.TOWN_NAME
 
 func generate(g: OverworldGen) -> void:
 	name = town_name()
-	rng.seed = Game.hash_ints(g.seed_value, 4242)
+	rng.seed = 4242
 	center = Vector3(g.town_center.x, g.town_h, g.town_center.y)
-	var farm_gate := Vector2(g.farm_rect.position.x if g.town_center.x < g.farm_rect.get_center().x else g.farm_rect.end.x, g.farm_rect.get_center().y)
-	road_angles = [_angle_to(g.town_center, farm_gate), _angle_to(g.town_center, g.cave_pos)]
-	_layout(g)
+	var farm_entry: Vector2 = ValleyLayout.STREET_NODES["w2"]
+	road_angles = [_angle_to(g.town_center, farm_entry), _angle_to(g.town_center, g.cave_pos)]
+	for spec in ValleyLayout.BUILDINGS:
+		buildings.append(_building(spec, g))
+	for d in ValleyLayout.TOWN_DECOR:
+		var e: Dictionary = d.duplicate()
+		if e.has("p"):
+			var p2: Vector2 = e["p"]
+			e["p"] = Vector3(p2.x, g.h_at(p2.x, p2.y), p2.y)
+		decor.append(e)
+	for lp in ValleyLayout.TOWN_LAMPS:
+		lamps.append(Vector3(lp.x, g.h_at(lp.x, lp.y), lp.y))
+	_build_streets(g)
 	_people()
 	var extra := int(Game.world.get("town", {}).get("newcomers", 0))
 	for i in extra:
@@ -108,83 +105,32 @@ func generate(g: OverworldGen) -> void:
 func _angle_to(a: Vector2, b: Vector2) -> float:
 	return atan2(b.y - a.y, b.x - a.x)
 
-func _near_road(ang: float, tol: float) -> bool:
-	for ra in road_angles:
-		if abs(wrapf(ang - ra, -PI, PI)) < tol:
-			return true
-	return false
-
-func _layout(g: OverworldGen) -> void:
-	var inner_slots: Array = []
-	var n_in := 11
-	var off := rng.randf() * TAU
-	for i in n_in:
-		var a := off + TAU * i / n_in
-		if not _near_road(a, deg_to_rad(17)):
-			inner_slots.append(a)
-	var outer_slots: Array = []
-	for i in n_in:
-		var a2 := off + TAU * (i + 0.5) / n_in
-		if not _near_road(a2, deg_to_rad(13)):
-			outer_slots.append(a2)
-	var roles := SHOP_ROLES.duplicate()
-	roles.append("curio_hall")
-	for i in inner_slots.size():
-		var role: String = roles[i] if i < roles.size() else "house"
-		buildings.append(_building("b%d" % i, role, inner_slots[i], R_INNER, g))
-	for i in outer_slots.size():
-		buildings.append(_building("h%d" % i, "house", outer_slots[i], R_OUTER, g))
-	# trees, benches, flower beds, crates
-	for i in 14:
-		var a3 := rng.randf() * TAU
-		var r := rng.randf_range(R_OUTER + 6.0, R_OUTER + 10.0)
-		if _near_road(a3, deg_to_rad(10)):
-			continue
-		decor.append({"k": "tree", "p": _ring_point(a3, r), "r": rng.randf() * TAU, "v": rng.randi() % 4})
-	for i in 4:
-		var a4 := TAU * (i + 0.5) / 4.0 + off * 0.3
-		decor.append({"k": "bench", "p": _ring_point(a4, PLAZA_R + 1.2), "r": -a4 - PI / 2.0})
-	for b in buildings:
-		if b["role"] in SHOP_ROLES and b["role"] != "mayor":
-			var side := Vector3(cos(b["yaw"]), 0, -sin(b["yaw"]))
-			decor.append({"k": "crate", "p": b["front"] + side * (b["w"] / 2.0 + 0.3) - b["fwd"] * 1.2, "r": rng.randf() * TAU})
-
-func _ring_point(a: float, r: float) -> Vector3:
-	return center + Vector3(cos(a) * r, 0, sin(a) * r)
-
-func _building(id: String, role: String, ang: float, r: float, g: OverworldGen) -> Dictionary:
-	var pos := _ring_point(ang, r)
-	var to_center := (center - pos).normalized()
-	var yaw := atan2(to_center.x, to_center.z)
-	var w := rng.randf_range(6.5, 8.5) if role != "house" else rng.randf_range(5.5, 7.0)
-	var d := rng.randf_range(5.0, 6.0)
-	var floors := 2 if role in ["mayor", "innkeeper", "merchant"] or rng.randf() < 0.25 else 1
-	if role == "curio_hall":
-		w = 9.0
-		floors = 1
+func _building(spec: Dictionary, g: OverworldGen) -> Dictionary:
+	var p2: Vector2 = spec["pos"]
+	var face: Vector2 = spec["face"]
+	var to_face := (face - p2).normalized()
+	var yaw := atan2(to_face.x, to_face.y)
+	var pos := Vector3(p2.x, g.h_at(p2.x, p2.y), p2.y)
+	var w: float = spec["w"]
+	var d: float = spec["d"]
+	var role: String = spec["role"]
 	var b := {
-		"id": id, "role": role, "pos": pos, "yaw": yaw, "w": w, "d": d, "floors": floors, "ang": ang,
-		"wall": Props.WALL_COLORS[rng.randi() % Props.WALL_COLORS.size()],
-		"roof": Props.ROOF_COLORS[rng.randi() % Props.ROOF_COLORS.size()],
-		"style": rng.randi() % 3 if role != "mayor" else 1,
-		"timber": rng.randf() < 0.5,
-		"door_x": rng.randf_range(-0.8, 0.8) if role != "house" else rng.randf_range(-1.5, 1.5),
-		"seed": rng.randi(),
-		"fwd": to_center,
-		"reserved": role in ["curio_hall"] or false,
-		"residents": [],
+		"id": spec["id"], "role": role, "pos": pos, "yaw": yaw, "w": w, "d": d, "floors": int(spec["floors"]),
+		"wall": spec["wall"], "roof": spec["roof"], "style": int(spec["style"]), "timber": spec["timber"],
+		"door_x": 0.0 if role != "house" and role != "lot" else -0.8, "seed": String(spec["id"]).hash() & 0xffff,
+		"fwd": Vector3(to_face.x, 0, to_face.y), "reserved": role == "curio_hall", "residents": [],
 	}
-	if b["style"] == 2 and floors == 1:
-		b["style"] = 0
-	b["door"] = pos + Basis(Vector3.UP, yaw) * Vector3(b["door_x"], 0, d / 2.0)
-	b["front"] = pos + Basis(Vector3.UP, yaw) * Vector3(b["door_x"], 0, d / 2.0 + 1.6)
-	b["counter"] = pos + Basis(Vector3.UP, yaw) * Vector3(b["door_x"] - 1.6, 0, d / 2.0 + 2.3)
+	var basis := Basis(Vector3.UP, yaw)
+	b["door"] = pos + basis * Vector3(b["door_x"], 0, d / 2.0)
+	b["front"] = pos + basis * Vector3(b["door_x"], 0, d / 2.0 + 1.6)
+	b["counter"] = pos + basis * Vector3(b["door_x"] - 1.6, 0, d / 2.0 + 2.3)
 	for k in ["door", "front", "counter"]:
 		var v: Vector3 = b[k]
 		v.y = g.h_at(v.x, v.z)
 		b[k] = v
-	pos.y = g.h_at(pos.x, pos.z)
-	b["pos"] = pos
+	if role == "lot":
+		b["role"] = "lot"
+		b["reserved"] = true
 	if ROLE_INFO.has(role):
 		b["name"] = ROLE_INFO[role].get("building", "House")
 		b["sign_col"] = ROLE_INFO[role].get("sign", Color.WHITE)
@@ -206,233 +152,148 @@ func building_for_role(role: String) -> Dictionary:
 			return b
 	return {}
 
+## A named spot where townsfolk spend part of their day.
+func spot(key: String) -> Vector3:
+	var p: Vector2 = ValleyLayout.SPOTS.get(key, Vector2(center.x, center.z))
+	return Vector3(p.x, center.y, p.y)
+
+# ------------------------------------------------------------------ the street network
+
+func _build_streets(g: OverworldGen) -> void:
+	for k in ValleyLayout.STREET_NODES:
+		var p: Vector2 = ValleyLayout.STREET_NODES[k]
+		_nodes[k] = Vector3(p.x, g.h_at(p.x, p.y), p.y)
+		_links[k] = []
+	for l in ValleyLayout.STREET_LINKS:
+		_links[l[0]].append(l[1])
+		_links[l[1]].append(l[0])
+
+func _nearest_node(p: Vector3) -> String:
+	var best := ""
+	var bd := 1e9
+	for k in _nodes:
+		var d: float = Vector2(p.x, p.z).distance_to(Vector2(_nodes[k].x, _nodes[k].z))
+		if d < bd:
+			bd = d
+			best = k
+	return best
+
+func _node_path(a: String, b: String) -> Array:
+	var key := a + ">" + b
+	if _paths.has(key):
+		return _paths[key]
+	var dist := {a: 0.0}
+	var prev := {}
+	var open: Array = [a]
+	while not open.is_empty():
+		var bi := 0
+		for i in open.size():
+			if dist[open[i]] < dist[open[bi]]:
+				bi = i
+		var cur: String = open[bi]
+		open.remove_at(bi)
+		if cur == b:
+			break
+		for n in _links[cur]:
+			var nd: float = dist[cur] + _nodes[cur].distance_to(_nodes[n])
+			if nd < float(dist.get(n, 1e9)):
+				dist[n] = nd
+				prev[n] = cur
+				if not open.has(n):
+					open.append(n)
+	var path: Array = [b]
+	var c := b
+	while prev.has(c):
+		c = prev[c]
+		path.push_front(c)
+	if path[0] != a:
+		path = [a, b]
+	_paths[key] = path
+	return path
+
+## A walking route between two spots that follows the streets.
+func route(a: Vector3, b: Vector3) -> PackedVector3Array:
+	var pts := PackedVector3Array()
+	pts.append(a)
+	if Vector2(a.x, a.z).distance_to(Vector2(b.x, b.z)) > 6.0:
+		var na := _nearest_node(a)
+		var nb := _nearest_node(b)
+		if na != nb:
+			for k in _node_path(na, nb):
+				pts.append(_nodes[k])
+		else:
+			pts.append(_nodes[na])
+	pts.append(b)
+	return pts
+
 # ------------------------------------------------------------------ people
 
-## Deterministic shuffle (the global shuffle() would differ between players).
-func _shuffle(arr: Array) -> void:
-	for i in range(arr.size() - 1, 0, -1):
-		var j := rng.randi() % (i + 1)
-		var t = arr[i]
-		arr[i] = arr[j]
-		arr[j] = t
-
-func _pick(arr: Array) -> Variant:
-	return arr[rng.randi() % arr.size()]
-
-func _new_person(first: String, last: String, age: String) -> Dictionary:
-	var look := Doll.random_look(rng)
-	look["child"] = age == "child"
-	if age == "elder":
-		look["hair"] = [Color("d8d8d8"), Color("f0f0f0"), Color("a8a8a8")][rng.randi() % 3]
-		look["hair_style"] = [0, 3, 6][rng.randi() % 3]
-	if age == "child":
+func _person(spec: Dictionary, idx: int) -> Dictionary:
+	var look: Dictionary = {"skin": TownCast.S1, "hair": Color("5a3a22"), "hair_style": 0, "shirt": Color("4a7ab0"),
+		"pants": Color("4a4a5a"), "hat": -1, "hat_col": Color("4a4a5a"), "height": 1.0, "build": 1.0, "beard": false, "apron": -1}
+	for k in spec.get("look", {}):
+		look[k] = spec["look"][k]
+	look["child"] = spec["age"] == "child"
+	if spec["age"] == "child":
 		look["beard"] = false
-		look["height"] = rng.randf_range(0.95, 1.05)
-	var traits := []
-	while traits.size() < 2:
-		var t: String = _pick(TRAITS)
-		if not traits.has(t):
-			traits.append(t)
 	var p := {
-		"id": "npc%d" % residents.size(), "first": first, "last": last, "name": "%s %s" % [first, last],
-		"age": age, "role": "child" if age == "child" else ("elder" if age == "elder" else ""), "traits": traits,
-		"interests": [], "loves": [], "likes": [], "dislikes": [], "family": {}, "friends": [], "rival": "",
-		"look": look, "home": "", "work": "", "birthday": [rng.randi() % 4, rng.randi_range(1, 14)], "arrived": 0,
-		"voice_seed": rng.randi(),
+		"id": "npc%d" % idx, "key": spec["key"], "first": spec["first"], "last": spec["last"],
+		"name": "%s %s" % [spec["first"], spec["last"]], "age": spec["age"], "role": spec["role"],
+		"traits": spec["traits"].duplicate(), "interests": spec["interests"].duplicate(),
+		"loves": _valid(spec["loves"]), "likes": _valid(spec["likes"]), "dislikes": spec["dislikes"].duplicate(),
+		"family": {}, "friends": [], "rival": "", "look": look, "home": spec.get("home", ""), "work": "",
+		"birthday": spec["birthday"].duplicate(), "arrived": 0, "voice_seed": String(spec["key"]).hash() & 0x7fffffff,
+		"wish": WISHES.get(spec["interests"][0], "heartstone"),
 	}
+	if not Items.has(p["wish"]):
+		p["wish"] = "heartstone"
 	residents.append(p)
 	by_id[p["id"]] = p
+	_key_to_id[spec["key"]] = p["id"]
 	return p
 
-func _first_name(used: Dictionary) -> String:
-	for i in 50:
-		var f: String = _pick(FIRST)
-		if not used.has(f):
-			used[f] = true
-			return f
-	return _pick(FIRST)
+func _valid(ids: Array) -> Array:
+	var out: Array = []
+	for id in ids:
+		if Items.has(id):
+			out.append(id)
+	return out
 
 func _people() -> void:
-	var used := {}
-	var houses: Array = []
-	for b in buildings:
-		if b["role"] == "house":
-			houses.append(b)
-	var adults: Array = []
-	var hh_types := ["couple_kids", "single_parent", "elder_family", "siblings", "couple", "single", "single", "elder", "couple_kids", "single"]
-	var hi := 0
-	var total := 0
-	var households: Array = []
-	while hi < houses.size() - 2 and (adults.size() < 9 or total < 13) and total < 18:
-		var t: String = hh_types[rng.randi() % hh_types.size()] if hi > 1 else ["couple_kids", "elder_family"][hi]
-		var last: String = _pick(LAST)
-		var members: Array = []
-		match t:
-			"couple_kids":
-				var a := _new_person(_first_name(used), last, "adult")
-				var b := _new_person(_first_name(used), last, "adult")
-				_link(a, b, "spouse")
-				members.append_array([a, b])
-				for k in rng.randi_range(1, 2):
-					var c := _new_person(_first_name(used), last, "child")
-					_child_of(c, [a, b])
-					_link(a, c, "child")
-					_link(b, c, "child")
-					members.append(c)
-			"single_parent":
-				var a2 := _new_person(_first_name(used), last, "adult")
-				var c2 := _new_person(_first_name(used), last, "child")
-				_child_of(c2, [a2])
-				_link(a2, c2, "child")
-				members.append_array([a2, c2])
-			"elder_family":
-				var e := _new_person(_first_name(used), last, "elder")
-				var a3 := _new_person(_first_name(used), last, "adult")
-				var c3 := _new_person(_first_name(used), last, "child")
-				_link(e, a3, "child")
-				_link(a3, c3, "child")
-				_link(e, c3, "grandchild")
-				_child_of(c3, [a3])
-				members.append_array([e, a3, c3])
-			"siblings":
-				var a4 := _new_person(_first_name(used), last, "adult")
-				var b4 := _new_person(_first_name(used), last, "adult")
-				_link(a4, b4, "sibling")
-				b4["look"]["hair"] = a4["look"]["hair"]
-				members.append_array([a4, b4])
-			"couple":
-				var a5 := _new_person(_first_name(used), last, "adult")
-				var b5 := _new_person(_first_name(used), _pick(LAST), "adult")
-				_link(a5, b5, "spouse")
-				members.append_array([a5, b5])
-			"single":
-				members.append(_new_person(_first_name(used), last, "adult"))
-			"elder":
-				members.append(_new_person(_first_name(used), last, "elder"))
-		var house: Dictionary = houses[hi]
-		for m in members:
-			m["home"] = house["id"]
-			house["residents"].append(m["id"])
-			if m["age"] == "adult":
-				adults.append(m)
-		households.append(members)
-		total += members.size()
-		hi += 1
-	for j in range(hi, houses.size()):
-		houses[j]["reserved"] = true
-		houses[j]["role"] = "lot"
-	# key jobs
-	_shuffle(adults)
-	var idx := 0
-	for role in SHOP_ROLES:
-		if idx >= adults.size():
-			break
-		var p: Dictionary = adults[idx]
-		p["role"] = role
-		p["work"] = building_for_role(role).get("id", "")
-		idx += 1
-	var other_jobs := ["farmer", "teacher", "musician", "scholar", "tailor", "beekeeper", "baker", "courier", "painter", "guard"]
-	for p in residents:
-		if p["role"] == "":
-			p["role"] = _pick(other_jobs)
-		elif p["role"] == "elder" and rng.randf() < 0.5:
-			p["role"] = "miner"
-	for p in residents:
-		_give_tastes(p)
-	# friendships across households, the occasional rivalry
-	for p in residents:
-		var tries := 0
-		while p["friends"].size() < 2 and tries < 10:
-			tries += 1
-			var q: Dictionary = _pick(residents)
-			if q["id"] == p["id"] or q["home"] == p["home"] or p["friends"].has(q["id"]):
-				continue
-			if (p["age"] == "child") != (q["age"] == "child") and rng.randf() < 0.8:
-				continue
-			p["friends"].append(q["id"])
-			if not q["friends"].has(p["id"]):
-				q["friends"].append(p["id"])
-		if p["rival"] == "" and rng.randf() < 0.18 and p["age"] != "child":
-			var r: Dictionary = _pick(residents)
-			if r["id"] != p["id"] and r["home"] != p["home"] and not p["friends"].has(r["id"]) and r["age"] != "child":
-				p["rival"] = r["id"]
-				r["rival"] = p["id"]
+	var specs: Array = TownCast.RESIDENTS
+	for i in specs.size():
+		_person(specs[i], i)
+	for i in specs.size():
+		var spec: Dictionary = specs[i]
+		var p: Dictionary = residents[i]
+		for rel in spec.get("family", {}):
+			var v = spec["family"][rel]
+			if v is Array:
+				var ids: Array = []
+				for k in v:
+					if _key_to_id.has(k):
+						ids.append(_key_to_id[k])
+				p["family"][rel] = ids
+			elif _key_to_id.has(v):
+				p["family"][rel] = _key_to_id[v]
+		for k in spec.get("friends", []):
+			if _key_to_id.has(k):
+				p["friends"].append(_key_to_id[k])
+		if spec.get("rival", "") != "" and _key_to_id.has(spec["rival"]):
+			p["rival"] = _key_to_id[spec["rival"]]
+		var home := building(p["home"])
+		if not home.is_empty():
+			home["residents"].append(p["id"])
+		if ROLE_INFO.get(p["role"], {}).has("building"):
+			p["work"] = building_for_role(p["role"]).get("id", "")
 
-func _link(a: Dictionary, b: Dictionary, rel: String) -> void:
-	match rel:
-		"spouse":
-			a["family"]["spouse"] = b["id"]
-			b["family"]["spouse"] = a["id"]
-		"child":
-			if not a["family"].has("children"):
-				a["family"]["children"] = []
-			a["family"]["children"].append(b["id"])
-			if not b["family"].has("parents"):
-				b["family"]["parents"] = []
-			b["family"]["parents"].append(a["id"])
-		"grandchild":
-			if not a["family"].has("grandchildren"):
-				a["family"]["grandchildren"] = []
-			a["family"]["grandchildren"].append(b["id"])
-			b["family"]["grandparent"] = a["id"]
-		"sibling":
-			a["family"]["sibling"] = b["id"]
-			b["family"]["sibling"] = a["id"]
-
-func _child_of(c: Dictionary, parents: Array) -> void:
-	var p: Dictionary = parents[rng.randi() % parents.size()]
-	c["look"]["hair"] = p["look"]["hair"]
-	c["look"]["skin"] = parents[rng.randi() % parents.size()]["look"]["skin"]
-
-func _give_tastes(p: Dictionary) -> void:
-	var job_interest: String = ROLE_INFO.get(p["role"], {}).get("interest", "")
-	var ints: Array = []
-	if job_interest != "" and rng.randf() < 0.5:
-		ints.append(job_interest)
-	while ints.size() < 2:
-		var i: String = _pick(INTERESTS)
-		if not ints.has(i):
-			ints.append(i)
-	p["interests"] = ints
-	var pool: Array = []
-	for i in ints:
-		pool.append_array(INTEREST_ITEMS.get(i, []))
-	_shuffle(pool)
-	var rare := pool.duplicate()
-	rare.sort_custom(func(a, b): return Items.def(a)["price"] > Items.def(b)["price"])
-	p["loves"] = [rare[rng.randi() % min(3, rare.size())]]
-	var likes: Array = []
-	for it in pool:
-		if likes.size() >= 4:
-			break
-		if not likes.has(it) and not p["loves"].has(it):
-			likes.append(it)
-	p["likes"] = likes
-	var dis := ["junk", "monster", "fish", "mushroom", "ore", "bait"]
-	_shuffle(dis)
-	for c in dis:
-		var clash := false
-		for it in pool:
-			if Items.cat_of(it) == c:
-				clash = true
-		if not clash:
-			p["dislikes"].append(c)
-		if p["dislikes"].size() >= 2:
-			break
-	p["wish"] = WISHES.get(ints[0], "heartstone")
-
-## A new resident arriving thanks to the town's growth.
+## A new neighbor arriving thanks to the town's growth.
 func add_newcomer(k: int) -> Dictionary:
-	var r := RandomNumberGenerator.new()
-	r.seed = Game.hash_ints(int(Game.world.get("seed", 1)), 9393, k)
-	var saved := rng.seed
-	rng.seed = r.seed
-	var used := {}
-	for p in residents:
-		used[p["first"]] = true
-	var p := _new_person(_first_name(used), _pick(LAST), "adult")
-	p["role"] = ["explorer", "glassblower", "historian", "chef", "stargazer", "herder", "painter", "musician"][k % 8]
-	_give_tastes(p)
+	var specs: Array = TownCast.NEWCOMERS
+	var spec: Dictionary = specs[k % specs.size()].duplicate(true)
+	if k >= specs.size():
+		spec["key"] = "%s%d" % [spec["key"], k]
+	var p := _person(spec, residents.size())
 	var lot := {}
 	for b in buildings:
 		if b["role"] == "lot":
@@ -440,12 +301,14 @@ func add_newcomer(k: int) -> Dictionary:
 			break
 	if not lot.is_empty():
 		lot["role"] = "house"
+		lot["reserved"] = false
 		lot["residents"].append(p["id"])
 		p["home"] = lot["id"]
 	else:
-		p["home"] = residents[0]["home"]
+		var shared := building_for_role("innkeeper")
+		p["home"] = shared.get("id", residents[0]["home"])
 	p["arrived"] = 1 + k
-	p["friends"] = [residents[rng.randi() % residents.size()]["id"]]
+	p["friends"] = [residents[(k * 5 + 3) % TownCast.RESIDENTS.size()]["id"]]
 	return p
 
 func resident(id: String) -> Dictionary:

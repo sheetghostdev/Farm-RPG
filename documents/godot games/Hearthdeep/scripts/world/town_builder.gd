@@ -55,7 +55,7 @@ func _place_building(b: Dictionary) -> void:
 		params["flowers"] = true
 	if role == "house":
 		params["flowers"] = (b["seed"] % 3) == 0
-	var mesh := Meshes.cached("bld_" + b["id"] + "_" + str(int(Game.world.get("seed", 0))), func(): return Props.building(params))
+	var mesh := Meshes.cached("bld_" + b["id"], func(): return Props.building(params))
 	var mi := Meshes.inst(mesh, build_root, b["pos"], b["yaw"])
 	var bh := 2.9 + (int(b["floors"]) - 1) * 2.4 + float(b["w"]) * 0.42
 	Zones.register_occluder(mi, "over", b["pos"] + Vector3(0, bh / 2.0, 0), Vector3(b["w"] / 2.0 + 0.6, bh / 2.0 + 0.3, b["d"] / 2.0 + 0.6), b["yaw"])
@@ -124,10 +124,7 @@ func _build_plaza() -> void:
 	board.set_mesh(Props.get_mesh("notice_board", 0), 0.0, -farm_ang + PI / 2.0)
 	board.add_box_blocker(Vector3(2.0, 2.0, 0.4), Vector3.ZERO, -farm_ang + PI / 2.0)
 	over.register(board)
-	for i in 4:
-		var a := TAU * i / 4.0 + 0.4
-		var lp := c + Vector3(cos(a), 0, sin(a)) * (TownGen.PLAZA_R + 3.6)
-		lp.y = over.ground_y(lp.x, lp.z)
+	for lp in gen.lamps:
 		_lamp(lp)
 
 func _lamp(p: Vector3) -> void:
@@ -142,12 +139,12 @@ func _lamp(p: Vector3) -> void:
 
 func _build_decor() -> void:
 	for d in gen.decor:
-		var p: Vector3 = d["p"]
+		var p: Vector3 = d.get("p", Vector3.ZERO)
 		p.y = over.ground_y(p.x, p.z)
 		match d["k"]:
 			"tree":
 				var t = ["oak", "birch", "oak", "willow"][int(d["v"]) % 4]
-				Meshes.inst(Props.get_mesh(t, int(d["v"])), extras_root, p, d["r"])
+				Meshes.inst(Props.get_mesh(t, int(d["v"])), extras_root, p, d.get("r", float(int(p.x * 13.0) % 628) / 100.0))
 				var b := StaticBody3D.new()
 				var cs := CollisionShape3D.new()
 				var sh := CylinderShape3D.new()
@@ -159,9 +156,28 @@ func _build_decor() -> void:
 				extras_root.add_child(b)
 				b.position = p
 			"bench":
-				Meshes.inst(Props.get_mesh("bench_prop", 0), extras_root, p, d["r"])
+				Meshes.inst(Props.get_mesh("bench_prop", 0), extras_root, p, d.get("r", 0.0))
 			"crate":
-				Meshes.inst(Props.get_mesh("crate_prop" if int(abs(p.x * 7.0 + p.z * 13.0)) % 2 == 0 else "barrel_prop", 0), extras_root, p, d["r"], 0.8)
+				Meshes.inst(Props.get_mesh("crate_prop" if int(abs(p.x * 7.0 + p.z * 13.0)) % 2 == 0 else "barrel_prop", 0), extras_root, p, d.get("r", 0.0), 0.8)
+			"flower_bed":
+				Meshes.inst(Props.get_mesh("flower_bed", int(abs(p.x + p.z)) % 6), extras_root, p, d.get("r", 0.0))
+			"allotment":
+				# the community garden: tidy beds of whatever's in season
+				var crops = [["turnip", "potato", "carrot"], ["tomato", "corn", "wheat"], ["pumpkin", "carrot", "potato"], ["turnip", "potato", "carrot"]][Game.season()]
+				for row in 3:
+					for k in 6:
+						var cp := p + Vector3(-6.0 + k * 2.4, 0, -4.5 + row * 4.5)
+						cp.y = over.ground_y(cp.x, cp.z)
+						Meshes.inst(Props.get_mesh("soil_bed", 0), extras_root, cp)
+						Meshes.inst(ItemModels.crop_mesh(crops[row], 3), extras_root, cp + Vector3(0, 0.12, 0), float(k) * 1.3, 1.0, 60.0)
+			"fence_run":
+				var fa: Vector2 = d["a"]
+				var fb: Vector2 = d["b"]
+				var n := int(fa.distance_to(fb) / 1.0)
+				var yaw := atan2(fb.x - fa.x, fb.y - fa.y) + PI / 2.0
+				for k in n:
+					var fp: Vector2 = fa.lerp(fb, (k + 0.5) / n)
+					Meshes.inst(ItemModels.placeable_mesh("fence"), extras_root, Vector3(fp.x, over.ground_y(fp.x, fp.y), fp.y), yaw)
 
 func _spawn_npc(p: Dictionary) -> void:
 	if npcs.has(p["id"]):
