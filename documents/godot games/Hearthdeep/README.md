@@ -11,7 +11,8 @@ up doing what just does it, and the town notices.
 
 | | |
 |---|---|
-| ![Farm](docs/screenshots/shot_farm.jpg) | ![Town](docs/screenshots/town_overview.jpg) |
+| ![Brindlewick's plaza](docs/screenshots/town_plaza.jpg) | ![The farm](docs/screenshots/farm.jpg) |
+| ![Delver's Yard and the return portal](docs/screenshots/return_portal.jpg) | ![The Highlands](docs/screenshots/highlands.jpg) |
 | ![Home](docs/screenshots/home_day.jpg) | ![Caves](docs/screenshots/cave_13.jpg) |
 | ![Combat](docs/screenshots/fight_4_bat.jpg) | ![Fishing](docs/screenshots/fishing_game.jpg) |
 | ![Journal](docs/screenshots/journal_chronicle.jpg) | ![Map](docs/screenshots/map_over.jpg) |
